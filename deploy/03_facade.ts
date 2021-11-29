@@ -1,52 +1,68 @@
 import {HardhatRuntimeEnvironment} from "hardhat/types"
-import {address as GSNAddress} from "../build/gsn/Forwarder.json"
 
 async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
-  const {deployments, getNamedAccounts, ethers} = hre
+  const {deployments, getNamedAccounts} = hre
   const {deploy, get, execute} = deployments
   const {deployer} = await getNamedAccounts()
 
-  const WETH = await get("WETH")
+  const WAVAX = await get("WAVAX")
+  const StableCoin = await get("USDC")
   const OptionsManager = await get("OptionsManager")
   const uniswapRouter = await get("UniswapRouter")
-
-  const Facade = await deploy("Facade", {
+  console.log("Deploying facade")
+  await deploy("Facade", {
     from: deployer,
     log: true,
     args: [
-      WETH.address,
+      WAVAX.address,
       uniswapRouter.address,
-      OptionsManager.address,
-      "0xAa3E82b4c4093b4bA13Cb5714382C99ADBf750cA",
+      OptionsManager.address
     ],
+    waitConfirmations: 1
   })
 
+  
+  console.log("Setting up last steps")
   await execute(
     "Facade",
-    {from: deployer, log: true},
-    "poolApprove",
-    (await get("HegicWETHCALL")).address,
-  )
-
-  await execute(
-    "Facade",
-    {from: deployer, log: true},
-    "poolApprove",
-    (await get("HegicWETHPUT")).address,
-  )
-
-  await execute(
-    "Facade",
-    {from: deployer, log: true},
+    {from: deployer, log: true, waitConfirmations: 1},
     "poolApprove",
     (await get("HegicWBTCCALL")).address,
   )
 
   await execute(
     "Facade",
-    {from: deployer, log: true},
+    {from: deployer, log: true, waitConfirmations: 1},
     "poolApprove",
     (await get("HegicWBTCPUT")).address,
+  )
+
+  await execute(
+    "Facade",
+    {from: deployer, log: true, waitConfirmations: 1},
+    "poolApprove",
+    (await get("HegicWETHCALL")).address,
+  )
+
+  await execute(
+    "Facade",
+    {from: deployer, log: true, waitConfirmations: 1},
+    "poolApprove",
+    (await get("HegicWETHPUT")).address,
+  )
+
+
+  await execute(
+    "Facade",
+    {from: deployer, log: true, waitConfirmations: 1},
+    "poolApprove",
+    (await get("HegicWAVAXCALL")).address,
+  )
+  await execute(
+    "Facade",
+    {from: deployer, log: true, waitConfirmations: 1},
+    "poolApprove",
+    (await get("HegicWAVAXPUT")).address,
   )
 }
 

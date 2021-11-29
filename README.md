@@ -13,8 +13,6 @@ Telegram](https://img.shields.io/badge/Chat%20on-Telegram-blue.svg)](https://t.m
 
 Hegic Protocol v8888 is currently in active development. Deploy/use at your own risk.
 
-![alt text](https://github.com/hegic/Hegic-protocol-v8888/blob/main/docs/Hegic%20Protocol%20v8888%20Contracts.png?raw=true)
-
 ## Development
 
 ### Install dependencies

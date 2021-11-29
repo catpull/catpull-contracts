@@ -1,4 +1,4 @@
-pragma solidity 0.8.6;
+pragma solidity ^0.8.4;
 
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -21,6 +21,7 @@ pragma solidity 0.8.6;
 
 import "../Interfaces/IOptionsManager.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
@@ -33,13 +34,19 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract OptionsManager is
     IOptionsManager,
-    ERC721("Hegic V8888 Options (Tokenized)", "HOT8888"),
+    ERC721("Catpull Options (Tokenized)", "CATPULL"),
+    ERC721Enumerable,
     AccessControl
 {
     bytes32 public constant HEGIC_POOL_ROLE = keccak256("HEGIC_POOL_ROLE");
     uint256 public nextTokenId = 0;
     mapping(uint256 => address) public override tokenPool;
-
+    function _beforeTokenTransfer(address from, address to, uint256 tokenId)
+        internal
+        override(ERC721, ERC721Enumerable)
+    {
+        super._beforeTokenTransfer(from, to, tokenId);
+    }
     constructor() {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
@@ -67,7 +74,7 @@ contract OptionsManager is
         public
         view
         virtual
-        override(ERC721, AccessControl, IERC165)
+        override(ERC721, AccessControl, IERC165, ERC721Enumerable)
         returns (bool)
     {
         return

@@ -1,9 +1,10 @@
 pragma solidity ^0.8.4;
+import "../Interfaces/IPoolInputConstraint.sol";
 
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
  * Hegic
- * Copyright (C) 2021 Hegic
+ * Copyright (C) 2021 CatPull
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,15 +20,16 @@ pragma solidity ^0.8.4;
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  **/
 
-import "./ERC20Mock.sol";
-
-contract WETHMock is ERC20Mock("WETH", "Wrapped Ether", 18) {
-    function deposit() external payable {
-        _mint(msg.sender, msg.value);
-    }
-
-    function withdraw(uint256 amount) external {
-        _burn(msg.sender, amount);
-        payable(msg.sender).transfer(amount);
+contract InitialInputConstraint is IPoolInputConstraint {
+    function validateInput(
+        uint256 period,
+        uint256,
+        uint256 strike,
+        uint256 currentPrice,
+        bool
+    ) external pure override {
+        if (currentPrice != strike) {
+            require(period == 30 days, "Only 30 days expiry supported for non ATM options");
+        }
     }
 }

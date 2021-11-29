@@ -1,4 +1,4 @@
-pragma solidity 0.8.6;
+pragma solidity ^0.8.4;
 
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -36,18 +36,22 @@ contract HegicCALL is HegicPool {
         string memory name,
         string memory symbol,
         IOptionsManager manager,
-        IPriceCalculator _pricer,
-        IHegicStaking _settlementFeeRecipient,
-        AggregatorV3Interface _priceProvider
+        IPriceCalculator _pricer1,
+        IPriceCalculator _pricer2,
+        IPriceCalculator _pricer3,
+        AggregatorV3Interface _priceProvider,
+        IERC20 _assetPriceToken
     )
         HegicPool(
             _token,
             name,
             symbol,
             manager,
-            _pricer,
-            _settlementFeeRecipient,
-            _priceProvider
+            _pricer1,
+            _pricer2,
+            _pricer3,
+            _priceProvider,
+            _assetPriceToken
         )
     {}
 

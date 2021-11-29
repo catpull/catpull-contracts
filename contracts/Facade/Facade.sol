@@ -1,4 +1,4 @@
-pragma solidity 0.8.6;
+pragma solidity ^0.8.4;
 
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -37,17 +37,14 @@ contract Facade is Ownable {
     IWETH public immutable WETH;
     IUniswapV2Router01 public immutable exchange;
     IOptionsManager public immutable optionsManager;
-    address public _trustedForwarder;
 
     constructor(
         IWETH weth,
         IUniswapV2Router01 router,
-        IOptionsManager manager,
-        address trustedForwarder
+        IOptionsManager manager
     ) {
         WETH = weth;
         exchange = router;
-        _trustedForwarder = trustedForwarder;
         optionsManager = manager;
     }
 
@@ -177,17 +174,15 @@ contract Facade is Ownable {
     /**
      * @notice Used for converting the liquidity provider's Ether (ETH)
      * into Wrapped Ether (WETH) and providing the funds into the pool.
-     * @param hedged The liquidity tranche type: hedged or unhedged (classic)
      **/
     function provideEthToPool(
         IHegicPool pool,
-        bool hedged,
         uint256 minShare
     ) external payable returns (uint256) {
         WETH.deposit{value: msg.value}();
         if (WETH.allowance(address(this), address(pool)) < msg.value)
             WETH.approve(address(pool), type(uint256).max);
-        return pool.provideFrom(msg.sender, msg.value, hedged, minShare);
+        return pool.provideFrom(msg.sender, msg.value, minShare);
     }
 
     /**
@@ -201,33 +196,8 @@ contract Facade is Ownable {
         }
     }
 
-    /**
-     * @notice Used for granting the GSN (Gas Station Network) contract
-     * the permission to pay the gas (transaction) fees for the users.
-     * @param forwarder GSN (Gas Station Network) contract address
-     **/
-    function isTrustedForwarder(address forwarder) public view returns (bool) {
-        return forwarder == _trustedForwarder;
-    }
-
-    function claimAllStakingProfits(
-        IHegicStaking[] calldata stakings,
-        address account
-    ) external {
-        uint256 arrayLength = stakings.length;
-        for (uint256 i = 0; i < arrayLength; i++) {
-            IHegicStaking s = stakings[i];
-            if (s.profitOf(account) > 0) s.claimProfits(account);
-        }
-    }
-
     function _msgSender() internal view override returns (address signer) {
         signer = msg.sender;
-        if (msg.data.length >= 20 && isTrustedForwarder(signer)) {
-            assembly {
-                signer := shr(96, calldataload(sub(calldatasize(), 20)))
-            }
-        }
     }
 
     function exercise(uint256 optionId) external {
@@ -236,9 +206,5 @@ contract Facade is Ownable {
             "Facade Error: _msgSender is not eligible to exercise the option"
         );
         IHegicPool(optionsManager.tokenPool(optionId)).exercise(optionId);
-    }
-
-    function versionRecipient() external pure returns (string memory) {
-        return "2.2.2";
     }
 }

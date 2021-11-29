@@ -1,190 +1,250 @@
 import {HardhatRuntimeEnvironment} from "hardhat/types"
 import {HegicPool} from "../typechain/HegicPool"
 import {OptionsManager} from "../typechain/OptionsManager"
+import {InitialRewardsManager} from "../typechain/InitialRewardsManager"
 
-const ETHIVRate = 7e11
-const BTCIVRate = 5e11
+const INITIVRAte = "900000000000000000" // 90%
 
 async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
-  const {deployments, getNamedAccounts, ethers, network} = hre
-  const {deploy, get} = deployments
+  const {deployments, getNamedAccounts, ethers} = hre
+  const {deploy, execute, get} = deployments
   const {deployer} = await getNamedAccounts()
 
-  const HEGIC = await get("HEGIC")
-  const USDC = await get("USDC")
-  const WETH = await get("WETH")
-  const WBTC = await get("WBTC")
-  const BTCPriceProvider = await get("WBTCPriceProvider")
-  const ETHPriceProvider = await get("ETHPriceProvider")
+  const stableCoin = await get("USDC")
+  const governanceToken = await get("GovernanceToken")
 
-  const OptionsManager = await deploy("OptionsManager", {
+  
+  const rewardsManagerInst = await deploy("RewardsManager", {
+    contract: "InitialRewardsManager",
     from: deployer,
+    waitConfirmations: 1,
+    log: true,
+    args: [governanceToken.address]
+  })
+
+  const rewardsManagerInstance = (await ethers.getContract(
+    "RewardsManager",
+  )) as InitialRewardsManager
+
+
+  await execute(
+    "GovernanceToken",
+    {from: deployer, log: true, waitConfirmations: 1},
+    "transfer",
+    rewardsManagerInst.address,
+    ethers.utils.parseUnits("1000000", 18),
+  )
+
+  const optionsManagerInst = await deploy("OptionsManager", {
+    from: deployer,
+    waitConfirmations: 1,
     log: true,
   })
 
   await deploy("Exerciser", {
     from: deployer,
+    waitConfirmations: 1,
     log: true,
-    args: [OptionsManager.address],
+    args: [optionsManagerInst.address],
   })
 
-  const WBTCStaking = await deploy("WBTCStaking", {
-    contract: "HegicStaking",
+  const blackScholesModelInst = await deploy("BlackScholes", {
+    contract: "BlackScholesModel",
     from: deployer,
+    waitConfirmations: 1,
     log: true,
-    args: [HEGIC.address, WBTC.address, "WBTC Staking", "WBTC S"],
+    args: []
   })
-
-  const WETHStaking = await deploy("WETHStaking", {
-    contract: "HegicStaking",
-    from: deployer,
-    log: true,
-    args: [HEGIC.address, WETH.address, "WBTC Staking", "WETH S"],
-  })
-
-  const USDCStaking = await deploy("USDCStaking", {
-    contract: "HegicStaking",
-    from: deployer,
-    log: true,
-    args: [HEGIC.address, USDC.address, "USDC Staking", "USDC S"],
-  })
-
-  const HegicAtmCall_WETH = await deploy("HegicWETHCALL", {
-    contract: "HegicCALL",
-    from: deployer,
-    log: true,
-    args: [
-      WETH.address,
-      "Hegic ETH ATM Calls Pool",
-      "ETHCALLSPOOL",
-      OptionsManager.address,
-      ethers.constants.AddressZero,
-      WETHStaking.address,
-      ETHPriceProvider.address,
-    ],
-  })
-
-  const HegicAtmPut_WETH = await deploy("HegicWETHPUT", {
-    contract: "HegicPUT",
-    from: deployer,
-    log: true,
-    args: [
-      USDC.address,
-      "Hegic ETH ATM Puts Pool",
-      "ETHPUTSPOOL",
-      OptionsManager.address,
-      ethers.constants.AddressZero,
-      USDCStaking.address,
-      ETHPriceProvider.address,
-      18,
-    ],
-  })
-
-  const HegicAtmCall_WBTC = await deploy("HegicWBTCCALL", {
-    contract: "HegicCALL",
-    from: deployer,
-    log: true,
-    args: [
-      WBTC.address,
-      "Hegic WBTC ATM Calls Pool",
-      "WBTCCALLSPOOL",
-      OptionsManager.address,
-      ethers.constants.AddressZero,
-      WBTCStaking.address,
-      BTCPriceProvider.address,
-    ],
-  })
-
-  const HegicAtmPut_WBTC = await deploy("HegicWBTCPUT", {
-    contract: "HegicPUT",
-    from: deployer,
-    log: true,
-    args: [
-      USDC.address,
-      "Hegic WBTC ATM Puts Pool",
-      "WBTCPUTSPOOL",
-      OptionsManager.address,
-      ethers.constants.AddressZero,
-      USDCStaking.address,
-      BTCPriceProvider.address,
-      8,
-    ],
-  })
-
-  const WETHCALLPricer = await deploy("ETHCallPriceCalculator", {
-    contract: "PriceCalculator",
-    from: deployer,
-    log: true,
-    args: [ETHIVRate, ETHPriceProvider.address, HegicAtmCall_WETH.address],
-  })
-
-  const WETHPUTPricer = await deploy("ETHPutPriceCalculator", {
-    contract: "PriceCalculator",
-    from: deployer,
-    log: true,
-    args: [ETHIVRate, ETHPriceProvider.address, HegicAtmPut_WETH.address],
-  })
-
-  const WBTCCALLPricer = await deploy("BTCCallPriceCalculator", {
-    contract: "PriceCalculator",
-    from: deployer,
-    log: true,
-    args: [BTCIVRate, BTCPriceProvider.address, HegicAtmCall_WBTC.address],
-  })
-
-  const WBTCPUTPricer = await deploy("BTCPutPriceCalculator", {
-    contract: "PriceCalculator",
-    from: deployer,
-    log: true,
-    args: [BTCIVRate, BTCPriceProvider.address, HegicAtmPut_WBTC.address],
-  })
-
-  const HegicAtmCall_WETHInstance = (await ethers.getContract(
-    "HegicWETHCALL",
-  )) as HegicPool
-
-  const HegicAtmPut_WETHInstance = (await ethers.getContract(
-    "HegicWETHPUT",
-  )) as HegicPool
-
-  const HegicAtmCall_WBTCInstance = (await ethers.getContract(
-    "HegicWBTCCALL",
-  )) as HegicPool
-
-  const HegicAtmPut_WBTCInstance = (await ethers.getContract(
-    "HegicWBTCPUT",
-  )) as HegicPool
 
   const optionsManagerInstance = (await ethers.getContract(
     "OptionsManager",
   )) as OptionsManager
 
-  await optionsManagerInstance.grantRole(
-    await optionsManagerInstance.HEGIC_POOL_ROLE(),
-    HegicAtmCall_WETH.address,
-  )
+  const inputConstaintInst = await deploy("InputConstaint", {
+    contract: "InitialInputConstraint",
+    from: deployer,
+    waitConfirmations: 1,
+    log: true,
+    args: []
+  })
 
-  await optionsManagerInstance.grantRole(
-    await optionsManagerInstance.HEGIC_POOL_ROLE(),
-    HegicAtmPut_WETH.address,
-  )
+  const setupPoolsForAsset = async (assetName: string) => {
+    const asset = await get(assetName)
+    const priceProvider = await get(`${assetName}PriceProvider`)
+    const callPoolName = `Hegic${assetName}CALL`
+    const putPoolName = `Hegic${assetName}PUT`
+    const callPoolInst = await deploy(callPoolName, {
+      contract: "HegicCALL",
+      from: deployer,
+      waitConfirmations: 1,
+      log: true,
+      args: [
+        asset.address,
+        `Hegic ${assetName} Calls Pool`,
+        `${assetName}CALLSPOOL`,
+        optionsManagerInst.address,
+        ethers.constants.AddressZero,
+        ethers.constants.AddressZero,
+        ethers.constants.AddressZero,
+        priceProvider.address,
+        asset.address,
+      ],
+    })
 
-  await optionsManagerInstance.grantRole(
-    await optionsManagerInstance.HEGIC_POOL_ROLE(),
-    HegicAtmCall_WBTC.address,
-  )
 
-  await optionsManagerInstance.grantRole(
-    await optionsManagerInstance.HEGIC_POOL_ROLE(),
-    HegicAtmPut_WBTC.address,
-  )
+    const putPoolInst = await deploy(putPoolName, {
+      contract: "HegicPUT",
+      from: deployer,
+      waitConfirmations: 1,
+      log: true,
+      args: [
+        stableCoin.address,
+        `Hegic ${assetName} Puts Pool`,
+        `${assetName}PUTSPOOL`,
+        optionsManagerInst.address,
+        ethers.constants.AddressZero,
+        ethers.constants.AddressZero,
+        ethers.constants.AddressZero,
+        priceProvider.address,
+        18,
+        asset.address,
+      ],
+    })
 
-  await HegicAtmCall_WETHInstance.setPriceCalculator(WETHCALLPricer.address)
-  await HegicAtmPut_WETHInstance.setPriceCalculator(WETHPUTPricer.address)
+    const callPricerAtm = await deploy(`${assetName}CallPriceCalculator`, {
+      contract: "PriceCalculator",
+      from: deployer,
+      waitConfirmations: 1,
+      log: true,
+      args: [INITIVRAte, priceProvider.address, callPoolInst.address, blackScholesModelInst.address],
+    })
+    const callPricerItm = await deploy(`${assetName}CallPriceCalculatorItm`, {
+      contract: "PriceCalculator",
+      from: deployer,
+      waitConfirmations: 1,
+      log: true,
+      args: [INITIVRAte, priceProvider.address, callPoolInst.address, blackScholesModelInst.address],
+    })
+    const callPricerOtm = await deploy(`${assetName}CallPriceCalculatorOtm`, {
+      contract: "PriceCalculator",
+      from: deployer,
+      waitConfirmations: 1,
+      log: true,
+      args: [INITIVRAte, priceProvider.address, callPoolInst.address, blackScholesModelInst.address],
+    })
+    const callInst = (await ethers.getContract(
+      callPoolName,
+    )) as HegicPool
 
-  await HegicAtmCall_WBTCInstance.setPriceCalculator(WBTCCALLPricer.address)
-  await HegicAtmPut_WBTCInstance.setPriceCalculator(WBTCPUTPricer.address)
+    const putPricerAtm = await deploy(`${assetName}PutPriceCalculator`, {
+      contract: "PriceCalculator",
+      from: deployer,
+      waitConfirmations: 1,
+      log: true,
+      args: [INITIVRAte, priceProvider.address, putPoolInst.address, blackScholesModelInst.address],
+    })
+
+    const putPricerItm = await deploy(`${assetName}PutPriceCalculatorItm`, {
+      contract: "PriceCalculator",
+      from: deployer,
+      waitConfirmations: 1,
+      log: true,
+      args: [INITIVRAte, priceProvider.address, putPoolInst.address, blackScholesModelInst.address],
+    })
+
+    const putPricerOtm = await deploy(`${assetName}PutPriceCalculatorOtm`, {
+      contract: "PriceCalculator",
+      from: deployer,
+      waitConfirmations: 1,
+      log: true,
+      args: [INITIVRAte, priceProvider.address, putPoolInst.address, blackScholesModelInst.address],
+    })
+    const putInst = (await ethers.getContract(
+      putPoolName,
+    )) as HegicPool
+
+    await execute(
+      callPoolName,
+      {from: deployer, log: true, waitConfirmations: 1},
+      "setPriceCalculator",
+      callPricerItm.address,
+      callPricerAtm.address,
+      callPricerOtm.address,
+    )
+
+    await execute(
+      putPoolName,
+      {from: deployer, log: true, waitConfirmations: 1},
+      "setPriceCalculator",
+      putPricerItm.address,
+      putPricerAtm.address,
+      putPricerOtm.address
+    )
+
+    await execute(
+      "OptionsManager",
+      {from: deployer, log: true, waitConfirmations: 1},
+      "grantRole",
+      await optionsManagerInstance.HEGIC_POOL_ROLE(),
+      putInst.address,
+    )
+
+
+    await execute(
+      "OptionsManager",
+      {from: deployer, log: true, waitConfirmations: 1},
+      "grantRole",
+      await optionsManagerInstance.HEGIC_POOL_ROLE(),
+      callInst.address,
+    )
+
+    if (hre.network.name === "mainnet" || hre.network.name === "testnet") {
+      await execute(
+        callPoolName,
+        {from: deployer, log: true, waitConfirmations: 1},
+        "setInputValidator",
+        ethers.constants.AddressZero,
+      )
+
+      await execute(
+        putPoolName,
+        {from: deployer, log: true, waitConfirmations: 1},
+        "setInputValidator",
+        ethers.constants.AddressZero,
+      )
+    }
+
+    await execute(
+      callPoolName,
+      {from: deployer, log: true, waitConfirmations: 1},
+      "setRewardsManager",
+      rewardsManagerInst.address
+    )
+
+    await execute(
+      putPoolName,
+      {from: deployer, log: true, waitConfirmations: 1},
+      "setRewardsManager",
+      rewardsManagerInst.address
+    )
+
+    await execute(
+      "RewardsManager",
+      {from: deployer, log: true, waitConfirmations: 1},
+      "addPool",
+      callInst.address
+    )
+    await execute(
+      "RewardsManager",
+      {from: deployer, log: true, waitConfirmations: 1},
+      "addPool",
+      putInst.address
+    )
+  }
+  await setupPoolsForAsset("WAVAX")
+  await setupPoolsForAsset("WETH")
+  await setupPoolsForAsset("WBTC")
 }
 
-deployment.tags = ["test"]
+deployment.tags = ["test", "base"]
 export default deployment

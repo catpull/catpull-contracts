@@ -1,4 +1,4 @@
-pragma solidity 0.8.6;
+pragma solidity ^0.8.4;
 
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -18,35 +18,44 @@ pragma solidity 0.8.6;
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  **/
-
 import "../Interfaces/Interfaces.sol";
-import "../utils/Math.sol";
+import "../Interfaces/IBlackScholesModel.sol";
 
 /**
- * @author 0mllwntrmt3
- * @title Hegic Protocol V8888 Price Calculator Contract
+ * @author 0mllwntrmt3, appl
+ * @title Catpull Price Calculator Contract
  * @notice The contract that calculates the options prices (the premiums)
  * that are adjusted through the `ImpliedVolRate` parameter.
+ * Forked from the hegic price calculator
  **/
 
 contract PriceCalculator is IPriceCalculator, Ownable {
-    using HegicMath for uint256;
+    event RiskFreeRateChanged(int);
+    event IVChanged(int);
+    event SwingRateChanged(int);
+    event UtilizationRateChangeChanged(uint);
+    event DaoShareChanged(uint);
 
-    uint256 public impliedVolRate;
-    uint256 internal constant PRICE_DECIMALS = 1e8;
-    uint256 internal constant PRICE_MODIFIER_DECIMALS = 1e8;
+    int256 public riskFreeRate = 0; // 0%
+    int256 public impliedVolRate = 900000000000000000; // 90%
+    int256 public swingRate = -150000000000000000;  // -20%
     uint256 public utilizationRate = 0;
+    uint256 public daoshare = 10;
     AggregatorV3Interface public priceProvider;
-    IHegicPool pool;
+    IHegicPool public pool;
+    IBlackScholesModel public model;
+
 
     constructor(
         uint256 initialRate,
         AggregatorV3Interface _priceProvider,
-        IHegicPool _pool
+        IHegicPool _pool,
+        IBlackScholesModel _model
     ) {
         pool = _pool;
         priceProvider = _priceProvider;
-        impliedVolRate = initialRate;
+        impliedVolRate = int(initialRate);
+        model = _model;
     }
 
     /**
@@ -54,8 +63,21 @@ contract PriceCalculator is IPriceCalculator, Ownable {
      * while balancing the asset's implied volatility rate.
      * @param value New IVRate value
      **/
-    function setImpliedVolRate(uint256 value) external onlyOwner {
+    function setImpliedVolRate(int256 value) external onlyOwner {
+        require(value >= 0 && value <= 200000000000000000000);
         impliedVolRate = value;
+        emit IVChanged(value);
+    }
+
+    /**
+     * @notice Used for adjusting the options prices (the premiums)
+     * while balancing the asset's implied volatility rate.
+     * @param value New IVRate value
+     **/
+    function setDaoShare(uint256 value) external onlyOwner {
+        require(value >= 10, "value too high");
+        daoshare = value;
+        emit DaoShareChanged(value);
     }
 
     /**
@@ -64,71 +86,87 @@ contract PriceCalculator is IPriceCalculator, Ownable {
      **/
     function setUtilizationRate(uint256 value) external onlyOwner {
         utilizationRate = value;
+        emit UtilizationRateChangeChanged(value);
+    }
+
+    /**
+     * @notice Used for updating swingRate value
+     * @param value New swingRate value
+     **/
+    function setSwingRate(int256 value) external onlyOwner {
+        require(value >= -100000000000000000000 && value <= 100000000000000000000);
+        swingRate = value;
+        emit SwingRateChanged(value);
     }
 
     /**
      * @notice Used for calculating the options prices
-     * @param period The option period in seconds (1 days <= period <= 90 days)
+     * @param period The option period in seconds (1 days <= period <= 30 days)
      * @param amount The option size
      * @param strike The option strike
      * @return settlementFee The part of the premium that
-     * is distributed among the HEGIC staking participants
+     * is paid to the DAO
      * @return premium The part of the premium that
      * is distributed among the liquidity providers
      **/
     function calculateTotalPremium(
         uint256 period,
         uint256 amount,
-        uint256 strike
-    ) public view override returns (uint256 settlementFee, uint256 premium) {
+        uint256 strike,
+        bool isCall,
+        uint outDecimals
+    ) override public view returns (uint256 settlementFee, uint256 premium) {
         uint256 currentPrice = _currentPrice();
-        if (strike == 0) strike = currentPrice;
-        require(
-            strike == currentPrice,
-            "Only ATM options are currently available"
+        if (strike == 0) {
+            strike = currentPrice;
+        }
+        require(period >= 1 days && period <= 30 days, "InvalidPeriod");
+        require(strike <= currentPrice + currentPrice / 5, "StrikeTooHigh");
+        require(strike >= currentPrice - currentPrice / 5, "StrikeTooLow");
+        (int callPrice, int putPrice) = _calculatePrice(
+            currentPrice * 10**10,
+            amount,
+            period,
+            strike * 10**10
         );
-        uint256 total = _calculatePeriodFee(amount, period);
-        settlementFee = total / 5;
+        uint total = (isCall ? uint(callPrice) : uint(putPrice));
+        total = (total * 1e8) / currentPrice;
+
+        if (outDecimals < 18) {
+            total /= 10 ** (18 - outDecimals);
+        } else if (outDecimals > 18) {
+            total *= 10 ** (outDecimals - 18);
+        }
+
+        // Increase premium as pool gets more used
+        // uint256 poolBalance = pool.totalBalance();
+        // uint256 lockedAmount = pool.lockedAmount() + amount;
+        // uint256 utilization = (lockedAmount * 100e8) / poolBalance;
+
+        // if (utilization > 40e8) {
+        //     total += (total * (utilization - 40e8) * utilizationRate) / 40e16;
+        // }
+
+        // Calculated in USD
+        settlementFee = total / daoshare;
         premium = total - settlementFee;
     }
 
-    /**
-     * @notice Calculates and prices in the time value of the option
-     * @param amount Option size
-     * @param period The option period in seconds (1 days <= period <= 90 days)
-     * @return fee The premium size to be paid
-     **/
-    function _calculatePeriodFee(uint256 amount, uint256 period)
-        internal
-        view
-        returns (uint256 fee)
-    {
-        return
-            (amount * _priceModifier(amount, period, pool)) /
-            PRICE_DECIMALS /
-            PRICE_MODIFIER_DECIMALS;
-    }
-
-    /**
-     * @notice Calculates `periodFee` of the option
-     * @param amount The option size
-     * @param period The option period in seconds (1 days <= period <= 90 days)
-     **/
-    function _priceModifier(
-        uint256 amount,
-        uint256 period,
-        IHegicPool pool
-    ) internal view returns (uint256 iv) {
-        uint256 poolBalance = pool.totalBalance();
-        require(poolBalance > 0, "Pool Error: The pool is empty");
-        iv = impliedVolRate * period.sqrt();
-
-        uint256 lockedAmount = pool.lockedAmount() + amount;
-        uint256 utilization = (lockedAmount * 100e8) / poolBalance;
-
-        if (utilization > 40e8) {
-            iv += (iv * (utilization - 40e8) * utilizationRate) / 40e16;
-        }
+    function _calculatePrice(
+        uint currentPrice,
+        uint amount,
+        uint period,
+        uint strike
+    ) public view returns (int256 callPrice, int putPrice) {
+        (callPrice, putPrice) = model.calculatePremiums(
+            int(amount),
+            int(currentPrice),
+            int(strike),
+            int(period),
+            swingRate,
+            impliedVolRate,
+            riskFreeRate
+        );
     }
 
     /**
@@ -139,6 +177,6 @@ contract PriceCalculator is IPriceCalculator, Ownable {
      **/
     function _currentPrice() internal view returns (uint256 price) {
         (, int256 latestPrice, , , ) = priceProvider.latestRoundData();
-        price = uint256(latestPrice);
+        price = uint(latestPrice);
     }
 }

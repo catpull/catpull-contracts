@@ -26,26 +26,26 @@ describe("PriceCalculator", async () => {
     hegicPoolWETH = (await ethers.getContract("HegicWETHCALL")) as HegicPool
 
     fakePriceProvider = (await ethers.getContract(
-      "ETHPriceProvider",
+      "WETHPriceProvider",
     )) as PriceProviderMock
     priceCalculator = (await ethers.getContract(
-      "ETHCallPriceCalculator",
+      "WETHCallPriceCalculator",
     )) as PriceCalculator
 
-    await WETH.connect(alice).deposit({value: BN.from(10).pow(20)})
+    await WETH.connect(alice).mint(BN.from(10).pow(20))
     await WETH.connect(alice).approve(
       hegicPoolWETH.address,
       ethers.constants.MaxUint256,
     )
     await hegicPoolWETH
       .connect(alice)
-      .provideFrom(await alice.getAddress(), 100000, true, 100000)
+      .provideFrom(await alice.getAddress(), 100000, 100000)
   })
 
   describe("constructor & settings", async () => {
     it("should set all initial state", async () => {
       expect(await priceCalculator.impliedVolRate()).to.be.eq(
-        BN.from(10000000000000),
+        BN.from("900000000000000000"),
       )
       expect(await priceCalculator.utilizationRate()).to.be.eq(BN.from(0))
       expect(await priceCalculator.priceProvider()).to.be.eq(
@@ -62,7 +62,7 @@ describe("PriceCalculator", async () => {
 
       it("should set the impliedVolRate correctly", async () => {
         const impliedVolRateBefore = await priceCalculator.impliedVolRate()
-        expect(impliedVolRateBefore).to.be.eq(BN.from(10000000000000))
+        expect(impliedVolRateBefore).to.be.eq(BN.from("900000000000000000"))
         await priceCalculator.setImpliedVolRate(BN.from(11000))
         const impliedVolRateAfter = await priceCalculator.impliedVolRate()
         expect(impliedVolRateAfter).to.be.eq(BN.from(11000))
@@ -70,24 +70,24 @@ describe("PriceCalculator", async () => {
     })
 
     describe("calculateTotalPremium", async () => {
-      it("should revert if the strike is not the current price", async () => {
-        await expect(
-          priceCalculator.calculateTotalPremium(
-            BN.from(604800),
-            BN.from(100),
-            BN.from(50100),
-          ),
-        ).to.be.revertedWith("Only ATM options are currently available")
-      })
-
-      it("should return correct values", async () => {
-        const feeResponse = await priceCalculator.calculateTotalPremium(
-          BN.from(604800),
+      it("should return correct values for OOM options", async () => {
+        const feeResponseCall = await priceCalculator.calculateTotalPremium(
+          BN.from("2592000"),
           BN.from(ethers.utils.parseUnits("1")),
-          BN.from(2500e8),
+          BN.from("260000000000"),
+          true,
+          8
         )
-        expect(feeResponse.settlementFee).to.be.eq("155400000000000000")
-        expect(feeResponse.premium).to.be.eq("621600000000000000")
+        expect(feeResponseCall.settlementFee.add(feeResponseCall.premium)).to.be.eq("9207709")
+
+        const feeResponsePut = await priceCalculator.calculateTotalPremium(
+          BN.from("2592000"),
+          BN.from(ethers.utils.parseUnits("1")),
+          BN.from("240000000000"),
+          false,
+          8
+        )
+        expect(feeResponsePut.settlementFee.add(feeResponsePut.premium)).to.be.eq("7713424")
       })
     })
   })

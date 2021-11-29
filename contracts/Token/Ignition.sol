@@ -1,9 +1,10 @@
 pragma solidity ^0.8.4;
 
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
- * Hegic
- * Copyright (C) 2021 Hegic
+ * Copyright (C) 2021 CatPull
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,16 +19,12 @@ pragma solidity ^0.8.4;
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  **/
-
-import "./ERC20Mock.sol";
-
-contract WETHMock is ERC20Mock("WETH", "Wrapped Ether", 18) {
-    function deposit() external payable {
-        _mint(msg.sender, msg.value);
+contract Ignition is ERC20, Ownable {
+    constructor() ERC20("CatPull Staking Token", "IGNI") {
+        _mint(msg.sender, 1000000000 * 10 ** decimals());
     }
 
-    function withdraw(uint256 amount) external {
-        _burn(msg.sender, amount);
-        payable(msg.sender).transfer(amount);
+    function mint(address to, uint256 amount) public onlyOwner {
+        _mint(to, amount);
     }
 }

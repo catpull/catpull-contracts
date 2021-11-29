@@ -1,3 +1,6 @@
+/* eslint-disable no-restricted-syntax */
+/* eslint-disable prefer-const */
+/* eslint-disable no-await-in-loop */
 import {ethers, deployments} from "hardhat"
 import {BigNumber as BN, Signer} from "ethers"
 import {solidity} from "ethereum-waffle"
@@ -22,17 +25,16 @@ describe("HegicPool", async () => {
   beforeEach(async () => {
     await deployments.fixture()
     ;[deployer, alice, bob] = await ethers.getSigners()
-    alice
     WETH = (await ethers.getContract("WETH")) as WethMock
     pricer = (await ethers.getContract(
-      "ETHCallPriceCalculator",
+      "WETHCallPriceCalculator",
     )) as PriceCalculator
     hegicPool = (await ethers.getContract("HegicWETHCALL")) as HegicPool
     ethPriceFeed = (await ethers.getContract(
-      "ETHPriceProvider",
+      "WETHPriceProvider",
     )) as AggregatorV3Interface
 
-    await WETH.connect(alice).deposit({value: BN.from(10).pow(20)})
+    await WETH.connect(alice).mint(BN.from(10).pow(20))
     await WETH.connect(alice).approve(
       hegicPool.address,
       ethers.constants.MaxUint256,
@@ -42,21 +44,12 @@ describe("HegicPool", async () => {
   describe("constructor & settings", async () => {
     it("should set all initial state", async () => {
       expect(await hegicPool.INITIAL_RATE()).to.be.eq(BN.from(10).pow(20))
-      expect(await hegicPool.lockupPeriodForHedgedTranches()).to.be.eq(
-        BN.from(5184000),
-      )
       expect(await hegicPool.lockupPeriodForUnhedgedTranches()).to.be.eq(
         BN.from(2592000),
       )
-      expect(await hegicPool.hedgeFeeRate()).to.be.eq(BN.from(80))
       expect(await hegicPool.lockedAmount()).to.be.eq(BN.from(0))
       expect(await hegicPool.unhedgedShare()).to.be.eq(BN.from(0))
-      expect(await hegicPool.hedgedShare()).to.be.eq(BN.from(0))
       expect(await hegicPool.unhedgedBalance()).to.be.eq(BN.from(0))
-      expect(await hegicPool.hedgedBalance()).to.be.eq(BN.from(0))
-      expect(await hegicPool.hedgePool()).to.be.eq(
-        BN.from(await deployer.getAddress()),
-      )
       expect(await hegicPool.token()).to.be.eq(WETH.address)
     })
   })
@@ -64,45 +57,37 @@ describe("HegicPool", async () => {
   describe("setLockupPeriod", async () => {
     it("should revert if the caller is not the HegicOptions", async () => {
       await expect(
-        hegicPool.connect(alice).setLockupPeriod(10, 10),
+        hegicPool.connect(alice).setLockupPeriod(10),
       ).to.be.revertedWith(
         "AccessControl: account 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 is missing role 0x0000000000000000000000000000000000000000000000000000000000000000",
       )
     })
 
-    it("should revert if the period is greater than 60 days", async () => {
+    it("should revert if the period is greater than 30 days", async () => {
       await expect(
-        hegicPool.setLockupPeriod(BN.from(5184001), 0),
-      ).to.be.revertedWith("The lockup period for hedged tranches is too long")
-      await expect(
-        hegicPool.setLockupPeriod(0, BN.from(5184001)),
+        hegicPool.setLockupPeriod(BN.from(5184001)),
       ).to.be.revertedWith(
         "The lockup period for unhedged tranches is too long",
       )
     })
 
     it("should set the lockupPeriod correctly", async () => {
-      const lockupPeriodBeforeH = await hegicPool.lockupPeriodForHedgedTranches()
       const lockupPeriodBeforeU = await hegicPool.lockupPeriodForUnhedgedTranches()
-      expect(lockupPeriodBeforeH).to.equal(BN.from(5184000))
       expect(lockupPeriodBeforeU).to.equal(BN.from(2592000))
-      await hegicPool.setLockupPeriod(5183001, 2123000)
-      const lockupPeriodAfterH = await hegicPool.lockupPeriodForHedgedTranches()
+      await hegicPool.setLockupPeriod(2123000)
       const lockupPeriodAfterU = await hegicPool.lockupPeriodForUnhedgedTranches()
-      expect(lockupPeriodAfterH).to.be.eq(BN.from(5183001))
       expect(lockupPeriodAfterU).to.be.eq(BN.from(2123000))
     })
   })
 
   describe("setMaxDepositAmount", async () => {
     it("should revert if the amount of the deposit exceeds the zero limit", async () => {
-      await hegicPool.setMaxDepositAmount(0, 0)
-      await WETH.deposit({value: ethers.utils.parseUnits("10")})
+      await hegicPool.setMaxDepositAmount(0)
+      await WETH.mint(ethers.utils.parseUnits("10"))
       await WETH.approve(hegicPool.address, ethers.constants.MaxUint256)
       const provide = hegicPool.provideFrom(
         await deployer.getAddress(),
         ethers.utils.parseUnits("10"),
-        false,
         0,
       )
       await expect(provide).to.be.revertedWith(
@@ -112,84 +97,32 @@ describe("HegicPool", async () => {
 
     it("should revert if the amount of the deposit exceeds the limit", async () => {
       const limit = ethers.utils.parseUnits("5")
-      await hegicPool.setMaxDepositAmount(limit, limit)
-      await WETH.deposit({value: ethers.utils.parseUnits("10")})
+      await hegicPool.setMaxDepositAmount(limit)
+      await WETH.mint(ethers.utils.parseUnits("10"))
       await WETH.approve(hegicPool.address, ethers.constants.MaxUint256)
       await hegicPool.provideFrom(
         await deployer.getAddress(),
         ethers.utils.parseUnits("4"),
-        false,
         0,
       )
       const provide = hegicPool.provideFrom(
         await deployer.getAddress(),
         ethers.utils.parseUnits("1").add(1),
-        false,
         0,
       )
       await expect(provide).to.be.revertedWith(
         "Pool Error: Depositing into the pool is not available",
-      )
-    })
-
-    it("should revert if the amount of the hedged deposit exceeds the zero limit", async () => {
-      await hegicPool.setMaxDepositAmount(ethers.constants.MaxUint256, 0)
-      await WETH.deposit({value: ethers.utils.parseUnits("10")})
-      await WETH.approve(hegicPool.address, ethers.constants.MaxUint256)
-      const provide = hegicPool.provideFrom(
-        await deployer.getAddress(),
-        ethers.utils.parseUnits("10"),
-        true,
-        0,
-      )
-      await expect(provide).to.be.revertedWith(
-        "Pool Error: Depositing into the pool is not available",
-      )
-      hegicPool.provideFrom(
-        await deployer.getAddress(),
-        ethers.utils.parseUnits("10"),
-        false,
-        0,
-      )
-    })
-
-    it("should revert if the amount of the hedged deposit exceeds the limit", async () => {
-      const limit = ethers.utils.parseUnits("5")
-      await hegicPool.setMaxDepositAmount(ethers.constants.MaxUint256, limit)
-      await WETH.deposit({value: ethers.utils.parseUnits("10")})
-      await WETH.approve(hegicPool.address, ethers.constants.MaxUint256)
-      await hegicPool.provideFrom(
-        await deployer.getAddress(),
-        ethers.utils.parseUnits("4"),
-        true,
-        0,
-      )
-      const provide = hegicPool.provideFrom(
-        await deployer.getAddress(),
-        ethers.utils.parseUnits("1").add(1),
-        true,
-        0,
-      )
-      await expect(provide).to.be.revertedWith(
-        "Pool Error: Depositing into the pool is not available",
-      )
-      await hegicPool.provideFrom(
-        await deployer.getAddress(),
-        ethers.utils.parseUnits("6"),
-        false,
-        0,
       )
     })
   })
 
   describe("setMaxUtilizationRate", async () => {
     beforeEach(async () => {
-      await WETH.deposit({value: ethers.utils.parseUnits("10")})
+      await WETH.mint(ethers.utils.parseUnits("10"))
       await WETH.approve(hegicPool.address, ethers.constants.MaxUint256)
       await hegicPool.provideFrom(
         await deployer.getAddress(),
         ethers.utils.parseUnits("10"),
-        false,
         0,
       )
     })
@@ -245,18 +178,15 @@ describe("HegicPool", async () => {
     })
     it("should take collateralizationRatio into account", async () => {
       await hegicPool.setCollateralizationRatio(50)
-      await WETH.deposit({value: ethers.utils.parseUnits("10")})
+      await WETH.mint(ethers.utils.parseUnits("10"))
       await WETH.approve(hegicPool.address, ethers.constants.MaxUint256)
       await hegicPool.provideFrom(
         await deployer.getAddress(),
         ethers.utils.parseUnits("10"),
-        false,
         0,
       )
 
-      await WETH.connect(alice).deposit({
-        value: ethers.utils.parseUnits("10", 18),
-      })
+      await WETH.connect(alice).mint(ethers.utils.parseUnits("10"))
 
       await WETH.connect(alice).approve(
         hegicPool.address,
@@ -281,29 +211,6 @@ describe("HegicPool", async () => {
           ethers.utils.parseUnits("16"),
           0,
         )
-    })
-  })
-
-  describe("setHedgePool", async () => {
-    it("should revert if the caller is not the admin", async () => {
-      await expect(
-        hegicPool.connect(alice).setHedgePool(await alice.getAddress()),
-      ).to.be.revertedWith(
-        "AccessControl: account 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 is missing role 0x0000000000000000000000000000000000000000000000000000000000000000",
-      )
-    })
-
-    it("should revert if the address is the zero address", async () => {
-      await expect(hegicPool.setHedgePool(ethers.constants.AddressZero)).to.be
-        .reverted
-    })
-
-    it("should set the hedgePool correctly", async () => {
-      const hedgePoolBefore = await hegicPool.hedgePool()
-      expect(hedgePoolBefore).to.equal(await deployer.getAddress())
-      await hegicPool.setHedgePool(await alice.getAddress())
-      const hedgePoolAfter = await hegicPool.hedgePool()
-      expect(hedgePoolAfter).to.be.eq(await alice.getAddress())
     })
   })
 
@@ -336,42 +243,33 @@ describe("HegicPool", async () => {
   describe("setPriceCalculator", async () => {
     it("should revert if the caller is not the owner", async () => {
       await expect(
-        hegicPool.connect(alice).setPriceCalculator(pricer.address),
+        hegicPool.connect(alice).setPriceCalculator(pricer.address,pricer.address,pricer.address),
       ).to.be.revertedWith(
         "AccessControl: account 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 is missing role 0x0000000000000000000000000000000000000000000000000000000000000000",
       )
     })
 
     it("should update the priceCalculator correctly", async () => {
-      const priceCalculatorBefore = await hegicPool.pricer()
+      const priceCalculatorBefore = await hegicPool.atmPricer()
       expect(priceCalculatorBefore).to.be.eq(pricer.address)
-      await hegicPool.setPriceCalculator(await alice.getAddress())
-      const priceCalculatorAfter = await hegicPool.pricer()
+      await hegicPool.setPriceCalculator(await alice.getAddress(),await alice.getAddress(),await alice.getAddress())
+      const priceCalculatorAfter = await hegicPool.itmPricer()
       expect(priceCalculatorAfter).to.be.eq(await alice.getAddress())
     })
   })
 
   describe("sellOption", async () => {
-    const hedgeFeeTests = [
-      ["0", "10"],
-      ["3", "7"],
-      ["7", "3"],
-      ["10", "0"],
-    ]
-
     beforeEach(async () => {
-      await WETH.deposit({value: ethers.utils.parseUnits("10")})
+      await WETH.mint(ethers.utils.parseUnits("10"))
       await WETH.approve(hegicPool.address, ethers.constants.MaxUint256)
       await hegicPool.provideFrom(
         await deployer.getAddress(),
         ethers.utils.parseUnits("3"),
-        false,
         0,
       )
       await hegicPool.provideFrom(
         await deployer.getAddress(),
         ethers.utils.parseUnits("7"),
-        true,
         0,
       )
     })
@@ -414,9 +312,7 @@ describe("HegicPool", async () => {
 
     // If the lockedAmount * 10 <= balance * 8 it should revert
     it("should revert if the locked amount is too large", async () => {
-      await WETH.connect(alice).deposit({
-        value: ethers.utils.parseUnits("10", 18),
-      })
+      await WETH.connect(alice).mint(ethers.utils.parseUnits("10"))
 
       await WETH.connect(alice).approve(
         hegicPool.address,
@@ -436,64 +332,13 @@ describe("HegicPool", async () => {
       )
     })
 
-    hedgeFeeTests.forEach((x) =>
-      it(`should transfer the hedge fee to the hedge pool correctly ${x}`, async () => {
-        await hegicPool.setHedgePool(await bob.getAddress())
-        const hedgePool = await hegicPool.hedgePool()
-        const balanceBefore = await WETH.balanceOf(hedgePool)
-        // const premium = BN.from(1e6)
-
-        await WETH.deposit({value: ethers.utils.parseUnits("10")})
-        await WETH.approve(hegicPool.address, ethers.constants.MaxUint256)
-        if (x[0] != "0")
-          await hegicPool.provideFrom(
-            await deployer.getAddress(),
-            ethers.utils.parseUnits(x[0]),
-            true,
-            0,
-          )
-        if (x[1] != "0")
-          await hegicPool.provideFrom(
-            await deployer.getAddress(),
-            ethers.utils.parseUnits(x[1]),
-            false,
-            0,
-          )
-
-        const amount = ethers.utils.parseUnits("1")
-        const strike = await ethPriceFeed.latestAnswer()
-        const {premium} = await pricer.calculateTotalPremium(
-          1209600,
-          amount,
-          strike,
-        )
-
-        await hegicPool
-          .connect(alice)
-          .sellOption(await alice.getAddress(), 1209600, amount, strike)
-
-        const poolTotalBalance = await hegicPool.totalBalance()
-        const poolHedgedBalance = await hegicPool.hedgedBalance()
-        const poolHedgeFeeRate = await hegicPool.hedgeFeeRate()
-
-        const hedgePremium = premium
-          .mul(poolHedgedBalance)
-          .div(poolTotalBalance)
-
-        const expectedHedgeFee = hedgePremium
-          .mul(poolHedgeFeeRate)
-          .div(BN.from(100))
-
-        const balanceAfter = await WETH.balanceOf(hedgePool)
-        expect(balanceAfter.sub(balanceBefore)).to.equal(expectedHedgeFee)
-      }),
-    )
-
     it("should emit a Create event with correct values", async () => {
       const {settlementFee, premium} = await pricer.calculateTotalPremium(
         1209600,
         ethers.utils.parseUnits("1"),
         2500e8,
+        true,
+        18
       )
       await expect(
         hegicPool
@@ -512,18 +357,15 @@ describe("HegicPool", async () => {
 
   describe("exercise", async () => {
     beforeEach(async () => {
-      await WETH.deposit({value: ethers.utils.parseUnits("10")})
+      await WETH.mint(ethers.utils.parseUnits("10"))
       await WETH.approve(hegicPool.address, ethers.constants.MaxUint256)
       await hegicPool.provideFrom(
         await deployer.getAddress(),
         ethers.utils.parseUnits("10"),
-        false,
         0,
       )
 
-      await WETH.connect(alice).deposit({
-        value: ethers.utils.parseUnits("10", 18),
-      })
+      await WETH.connect(alice).mint(ethers.utils.parseUnits("10"))
       await WETH.connect(alice).approve(
         hegicPool.address,
         ethers.constants.MaxUint256,
@@ -680,11 +522,9 @@ describe("HegicPool", async () => {
 
   describe("unlock", async () => {
     beforeEach(async () => {
-      await WETH.deposit({value: ethers.utils.parseUnits("10")})
+      await WETH.mint(ethers.utils.parseUnits("10"))
       await WETH.approve(hegicPool.address, ethers.constants.MaxUint256)
-      await WETH.connect(alice).deposit({
-        value: ethers.utils.parseUnits("10", 18),
-      })
+      await WETH.connect(alice).mint(ethers.utils.parseUnits("10"))
       await WETH.connect(alice).approve(
         hegicPool.address,
         ethers.constants.MaxUint256,
@@ -692,7 +532,6 @@ describe("HegicPool", async () => {
       await hegicPool.provideFrom(
         await deployer.getAddress(),
         ethers.utils.parseUnits("10"),
-        false,
         0,
       )
     })
@@ -770,7 +609,6 @@ describe("HegicPool", async () => {
         .provideFrom(
           await deployer.getAddress(),
           BN.from(100000),
-          true,
           BN.from(100000),
         )
       expect(await hegicPool.availableBalance()).to.eq(BN.from(100000))
@@ -783,7 +621,6 @@ describe("HegicPool", async () => {
           .provideFrom(
             await deployer.getAddress(),
             BN.from(10),
-            true,
             BN.from(10).pow(50),
           ),
       ).to.be.revertedWith("Pool Error: The mint limit is too large")
@@ -796,7 +633,6 @@ describe("HegicPool", async () => {
           .provideFrom(
             await deployer.getAddress(),
             BN.from(0),
-            true,
             BN.from(0),
           ),
       ).to.be.revertedWith("Pool Error: The amount is too small")
@@ -808,7 +644,6 @@ describe("HegicPool", async () => {
         .provideFrom(
           await deployer.getAddress(),
           BN.from(100000),
-          true,
           BN.from(100000),
         )
       const tranche = await hegicPool.tranches(BN.from(0))
@@ -816,7 +651,6 @@ describe("HegicPool", async () => {
       expect(tranche.share).to.eq(BN.from(10).pow(25))
       expect(tranche.state).to.eq(BN.from(1))
       expect(tranche.amount).to.eq(BN.from(100000))
-      expect(tranche.hedged).to.eq(true)
     })
 
     it("should set the Tranche values correctly when unhedged", async () => {
@@ -825,7 +659,6 @@ describe("HegicPool", async () => {
         .provideFrom(
           await deployer.getAddress(),
           BN.from(100000),
-          false,
           BN.from(100000),
         )
       const tranche = await hegicPool.tranches(BN.from(0))
@@ -833,7 +666,6 @@ describe("HegicPool", async () => {
       expect(tranche.share).to.eq(BN.from(10).pow(25))
       expect(tranche.state).to.eq(BN.from(1))
       expect(tranche.amount).to.eq(BN.from(100000))
-      expect(tranche.hedged).to.eq(false)
     })
 
     it("should emit a Tranche Transfer(Mint) event with correct values when unhedged", async () => {
@@ -843,7 +675,6 @@ describe("HegicPool", async () => {
           .provideFrom(
             await deployer.getAddress(),
             BN.from(100000),
-            false,
             BN.from(100000),
           ),
       )
@@ -877,7 +708,6 @@ describe("HegicPool", async () => {
         .provideFrom(
           await deployer.getAddress(),
           BN.from(100000),
-          true,
           BN.from(100000),
         )
       await ethers.provider.send("evm_increaseTime", [
@@ -894,7 +724,6 @@ describe("HegicPool", async () => {
         .provideFrom(
           await deployer.getAddress(),
           BN.from(100000),
-          true,
           BN.from(100000),
         )
 
@@ -903,34 +732,12 @@ describe("HegicPool", async () => {
       )
     })
 
-    it("should transfer tokens to the owner of the tranche when hedged", async () => {
-      await hegicPool
-        .connect(alice)
-        .provideFrom(
-          await alice.getAddress(),
-          BN.from(100000),
-          true,
-          BN.from(100000),
-        )
-      await ethers.provider.send("evm_increaseTime", [
-        BN.from(20000000).toNumber(),
-      ])
-      await ethers.provider.send("evm_mine", [])
-
-      const balanceBefore = await WETH.balanceOf(await alice.getAddress())
-      expect(balanceBefore).to.equal(BN.from(10).pow(20).sub(100000))
-      await hegicPool.connect(alice).withdraw(BN.from(0))
-      const balanceAfter = await WETH.balanceOf(await alice.getAddress())
-      expect(balanceAfter).to.equal(BN.from(balanceBefore).add(BN.from(100000)))
-    })
-
     it("should transfer tokens to the owner of the tranche when unhedged", async () => {
       await hegicPool
         .connect(alice)
         .provideFrom(
           await alice.getAddress(),
           BN.from(100000),
-          false,
           BN.from(100000),
         )
       await ethers.provider.send("evm_increaseTime", [
@@ -948,7 +755,7 @@ describe("HegicPool", async () => {
     it("should emit a Withdraw event with correct values", async () => {
       await hegicPool
         .connect(alice)
-        .provideFrom(await deployer.getAddress(), 100000, true, 100000)
+        .provideFrom(await deployer.getAddress(), 100000, 100000)
 
       await ethers.provider.send("evm_increaseTime", [
         BN.from(20000000).toNumber(),
@@ -958,17 +765,6 @@ describe("HegicPool", async () => {
       await expect(hegicPool.withdraw(BN.from(0)))
         .to.emit(hegicPool, "Withdrawn")
         .withArgs(await deployer.getAddress(), 0, 100000)
-    })
-  })
-
-  describe("withdrawWithoutHedge", async () => {
-    it("should revert if the trancheID does not exist", async () => {
-      await expect(hegicPool.withdrawWithoutHedge(BN.from(0))).to.be.reverted
-    })
-
-    it("should revert when the sender is not approved or the owner", async () => {
-      await expect(hegicPool.connect(alice).withdrawWithoutHedge(BN.from(0))).to
-        .be.reverted
     })
   })
 

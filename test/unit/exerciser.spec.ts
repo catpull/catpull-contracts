@@ -11,12 +11,6 @@ import {Exerciser} from "../../typechain/Exerciser"
 import {OptionsManager} from "../../typechain/OptionsManager"
 
 chai.use(solidity)
-// const {expect} = chai
-const ONE_DAY = BN.from(86400)
-const optionType = {
-  PUT: 1,
-  CALL: 2,
-}
 
 describe("Exerciser", async () => {
   let facade: Facade
@@ -24,8 +18,8 @@ describe("Exerciser", async () => {
   let USDC: ERC20
   let WETH: WethMock
   let alice: Signer
-  let HegicATMCALL_WETH: HegicPool
-  let HegicATMPUT_WETH: HegicPool
+  let hegicATMCALLWETH: HegicPool
+  let hegicATMPUTWETH: HegicPool
   let ethPriceFeed: AggregatorV3Interface
   let exerciser: Exerciser
   let manager: OptionsManager
@@ -39,17 +33,16 @@ describe("Exerciser", async () => {
     WBTC = (await ethers.getContract("WBTC")) as ERC20
     WETH = (await ethers.getContract("WETH")) as WethMock
     USDC = (await ethers.getContract("USDC")) as ERC20
-    USDC = (await ethers.getContract("USDC")) as ERC20
     ethPriceFeed = (await ethers.getContract(
-      "ETHPriceProvider",
+      "WETHPriceProvider",
     )) as AggregatorV3Interface
 
-    HegicATMCALL_WETH = (await ethers.getContract("HegicWETHCALL")) as HegicPool
-    HegicATMPUT_WETH = (await ethers.getContract("HegicWETHPUT")) as HegicPool
+    hegicATMCALLWETH = (await ethers.getContract("HegicWETHCALL")) as HegicPool
+    hegicATMPUTWETH = (await ethers.getContract("HegicWETHPUT")) as HegicPool
     manager = (await ethers.getContract("OptionsManager")) as OptionsManager
     exerciser = (await ethers.getContract("Exerciser")) as Exerciser
 
-    await WETH.connect(alice).deposit({value: ethers.utils.parseUnits("100")})
+    await WETH.connect(alice).mint(ethers.utils.parseUnits("100"))
 
     await WBTC.mintTo(
       await alice.getAddress(),
@@ -57,7 +50,7 @@ describe("Exerciser", async () => {
     )
 
     await WETH.connect(alice).approve(
-      HegicATMCALL_WETH.address,
+      hegicATMCALLWETH.address,
       ethers.constants.MaxUint256,
     )
 
@@ -72,20 +65,22 @@ describe("Exerciser", async () => {
     )
 
     await USDC.connect(alice).approve(
-      HegicATMPUT_WETH.address,
+      hegicATMPUTWETH.address,
       ethers.constants.MaxUint256,
     )
   })
 
   describe("exercise", () => {
     it("should exercise option", async () => {
-      await facade.provideEthToPool(HegicATMCALL_WETH.address, true, 0, {
-        value: ethers.utils.parseEther("10"),
-      })
+      await hegicATMCALLWETH.connect(alice).provideFrom(
+        await alice.getAddress(),
+        ethers.utils.parseEther("10"),
+        0
+      )
       await facade
         .connect(alice)
         .createOption(
-          HegicATMCALL_WETH.address,
+          hegicATMCALLWETH.address,
           24 * 3600,
           ethers.utils.parseUnits("1"),
           2500e8,

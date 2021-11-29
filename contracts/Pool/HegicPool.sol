@@ -1,4 +1,4 @@
-pragma solidity 0.8.6;
+pragma solidity ^0.8.4;
 
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -20,9 +20,12 @@ pragma solidity 0.8.6;
  **/
 
 import "../Interfaces/Interfaces.sol";
+import "../Interfaces/IRewardsManager.sol";
+import "../Interfaces/IPoolInputConstraint.sol";
 import "../Interfaces/IOptionsManager.sol";
 import "../Interfaces/Interfaces.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
@@ -37,51 +40,70 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 abstract contract HegicPool is
     IHegicPool,
     ERC721,
+    ERC721Enumerable,
     AccessControl,
     ReentrancyGuard
 {
     using SafeERC20 for IERC20;
 
     uint256 public constant INITIAL_RATE = 1e20;
+    IRewardsManager public rewardsManager;
     IOptionsManager public immutable optionsManager;
     AggregatorV3Interface public immutable priceProvider;
-    IPriceCalculator public override pricer;
-    uint256 public lockupPeriodForHedgedTranches = 60 days;
+    
+    IPriceCalculator public otmPricer;
+    IPriceCalculator public atmPricer;
+    IPriceCalculator public itmPricer;
+
+    IPoolInputConstraint public inputValidation;
+
     uint256 public lockupPeriodForUnhedgedTranches = 30 days;
-    uint256 public hedgeFeeRate = 80;
     uint256 public maxUtilizationRate = 80;
     uint256 public collateralizationRatio = 50;
     uint256 public override lockedAmount;
     uint256 public maxDepositAmount = type(uint256).max;
-    uint256 public maxHedgedDepositAmount = type(uint256).max;
 
     uint256 public unhedgedShare = 0;
-    uint256 public hedgedShare = 0;
     uint256 public override unhedgedBalance = 0;
-    uint256 public override hedgedBalance = 0;
-    IHegicStaking public settlementFeeRecipient;
-    address public hedgePool;
+    address public settlementFeeRecipient;
 
     Tranche[] public override tranches;
     mapping(uint256 => Option) public override options;
     IERC20 public override token;
-
+    IERC20 public assetPriceToken;
+    
     constructor(
         IERC20 _token,
         string memory name,
         string memory symbol,
         IOptionsManager manager,
-        IPriceCalculator _pricer,
-        IHegicStaking _settlementFeeRecipient,
-        AggregatorV3Interface _priceProvider
+        IPriceCalculator _otmPricer,
+        IPriceCalculator _atmPricer,
+        IPriceCalculator _itmPricer,
+        AggregatorV3Interface _priceProvider,
+        IERC20 _assetPriceToken
     ) ERC721(name, symbol) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         priceProvider = _priceProvider;
-        settlementFeeRecipient = _settlementFeeRecipient;
-        pricer = _pricer;
+        otmPricer = _otmPricer;
+        atmPricer = _atmPricer;
+        itmPricer = _itmPricer;
         token = _token;
-        hedgePool = _msgSender();
         optionsManager = manager;
+        assetPriceToken = _assetPriceToken;
+    }
+
+    function setInputValidator(IPoolInputConstraint validation) external {
+        inputValidation = validation;
+    }
+
+    /**
+     * @notice Used for setting the rewards manager
+     * contract that will be used to rewards users in governance tokens for using the protocol.
+     * @param value A new rewards manager
+     **/
+    function setRewardsManager(IRewardsManager value) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        rewardsManager = value;
     }
 
     /**
@@ -89,23 +111,17 @@ abstract contract HegicPool is
      * the liquidity providers who deposited the funds into the pools contracts
      * won't be able to withdraw them. Note that different lock-ups could
      * be set for the hedged and unhedged — classic — liquidity tranches.
-     * @param hedgedValue Hedged liquidity tranches lock-up in seconds
      * @param unhedgedValue Unhedged (classic) liquidity tranches lock-up in seconds
      **/
-    function setLockupPeriod(uint256 hedgedValue, uint256 unhedgedValue)
+    function setLockupPeriod(uint256 unhedgedValue)
         external
         override
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         require(
-            hedgedValue <= 60 days,
-            "The lockup period for hedged tranches is too long"
-        );
-        require(
             unhedgedValue <= 30 days,
             "The lockup period for unhedged tranches is too long"
         );
-        lockupPeriodForHedgedTranches = hedgedValue;
         lockupPeriodForUnhedgedTranches = unhedgedValue;
     }
 
@@ -116,19 +132,12 @@ abstract contract HegicPool is
      * for the hedged and unhedged — classic — liquidity tranches.
      * @param total Maximum amount of assets in the pool
      * in hedged and unhedged (classic) liquidity tranches combined
-     * @param hedged Maximum amount of assets in the pool
-     * in hedged liquidity tranches only
      **/
-    function setMaxDepositAmount(uint256 total, uint256 hedged)
+    function setMaxDepositAmount(uint256 total)
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(
-            total >= hedged,
-            "Pool Error: The total amount shouldn't be lower than the hedged amount"
-        );
         maxDepositAmount = total;
-        maxHedgedDepositAmount = hedged;
     }
 
     /**
@@ -184,28 +193,13 @@ abstract contract HegicPool is
         public
         view
         virtual
-        override(ERC721, AccessControl, IERC165)
+        override(ERC721, AccessControl, IERC165, ERC721Enumerable)
         returns (bool)
     {
         return
             interfaceId == type(IHegicPool).interfaceId ||
             AccessControl.supportsInterface(interfaceId) ||
             ERC721.supportsInterface(interfaceId);
-    }
-
-    /**
-     * @notice Used for changing the hedging pool address
-     * that will be accumulating the hedging premiums paid
-     * as a share of the total premium redirected to this address.
-     * @param value The address for receiving hedging premiums
-     **/
-    function setHedgePool(address value)
-        external
-        override
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
-        require(value != address(0));
-        hedgePool = value;
     }
 
     /**
@@ -225,10 +219,14 @@ abstract contract HegicPool is
         uint256 amount,
         uint256 strike
     ) external override returns (uint256 id) {
-        if (strike == 0) strike = _currentPrice();
+        uint price = _currentPrice();
+        if (strike == 0) strike = price;
         uint256 balance = totalBalance();
         uint256 amountToBeLocked = _calculateLockedAmount(amount);
-
+        
+        if (address(inputValidation) != address(0)) {
+            inputValidation.validateInput(period, amount, strike, price, _isCall());
+        }
         require(period >= 1 days, "Pool Error: The period is too short");
         require(period <= 90 days, "Pool Error: The period is too long");
         require(
@@ -237,13 +235,14 @@ abstract contract HegicPool is
             "Pool Error: The amount is too large"
         );
 
-        (uint256 settlementFee, uint256 premium) =
-            _calculateTotalPremium(period, amount, strike);
-        uint256 hedgedPremiumTotal = (premium * hedgedBalance) / balance;
-        uint256 hedgeFee = (hedgedPremiumTotal * hedgeFeeRate) / 100;
-        uint256 hedgePremium = hedgedPremiumTotal - hedgeFee;
-        uint256 unhedgePremium = premium - hedgedPremiumTotal;
-
+        (uint256 settlementFee, uint256 premium) = _calculateTotalPremium(period, amount, strike);
+        uint premiumPaid = settlementFee + premium;
+        if (_isCall()) {
+            premiumPaid = _priceOf(premiumPaid, price);
+        } else {
+            premiumPaid = premiumPaid * 1e12;
+        }
+        
         lockedAmount += amountToBeLocked;
         id = optionsManager.createOptionFor(holder);
         options[id] = Option(
@@ -252,31 +251,58 @@ abstract contract HegicPool is
             amount,
             amountToBeLocked,
             block.timestamp + period,
-            hedgePremium,
-            unhedgePremium
+            premiumPaid, // 18 digit precision, but in stablecoin
+            0
         );
 
+        if (address(rewardsManager) != address(0)) {
+            if (_isCall()) {
+                rewardsManager.callBought(holder, premiumPaid);
+            } else {
+                rewardsManager.putBought(holder, premiumPaid);
+            }
+        }
         token.safeTransferFrom(
             _msgSender(),
             address(this),
             premium + settlementFee
         );
-        token.safeTransfer(address(settlementFeeRecipient), settlementFee);
-        settlementFeeRecipient.distributeUnrealizedRewards();
-        if (hedgeFee > 0) token.safeTransfer(hedgePool, hedgeFee);
+        if (settlementFeeRecipient != address(0)) {
+            token.safeTransfer(address(settlementFeeRecipient), settlementFee);
+        }
         emit Acquired(id, settlementFee, premium);
+    }
+
+    function _priceOf(
+        uint amount,
+        uint price
+    ) internal pure returns(uint) {
+        uint totalInUSD = amount * price;
+        return totalInUSD / 1e8;
+    }
+
+    function priceOf(uint amount) external view returns(uint) {
+        return _priceOf(amount, _currentPrice());
     }
 
     /**
      * @notice Used for setting the price calculator
      * contract that will be used for pricing the options.
-     * @param pc A new price calculator contract address
+     * @param _otmPricer Price calculator contract address for otm options
+     * @param _atmPricer Price calculator contract address for itm options
+     * @param _itmPricer Price calculator contract address for atm options
      **/
-    function setPriceCalculator(IPriceCalculator pc)
+    function setPriceCalculator(
+        IPriceCalculator _otmPricer,
+        IPriceCalculator _atmPricer,
+        IPriceCalculator _itmPricer
+    )
         public
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        pricer = pc;
+        otmPricer = _otmPricer;
+        atmPricer = _atmPricer;
+        itmPricer = _itmPricer;
     }
 
     /**
@@ -302,16 +328,14 @@ abstract contract HegicPool is
         );
         _unlock(option);
         option.state = OptionState.Exercised;
+        option.profit = _priceOf(profit, _currentPrice());
         _send(optionsManager.ownerOf(id), profit);
         emit Exercised(id, profit);
     }
 
     function _send(address to, uint256 transferAmount) private {
         require(to != address(0));
-        uint256 hedgeLoss = (transferAmount * hedgedBalance) / totalBalance();
-        uint256 unhedgeLoss = transferAmount - hedgeLoss;
-        hedgedBalance -= hedgeLoss;
-        unhedgedBalance -= unhedgeLoss;
+        unhedgedBalance -= transferAmount;
         token.safeTransfer(to, transferAmount);
     }
 
@@ -341,8 +365,6 @@ abstract contract HegicPool is
             "Pool Error: The option with such an ID has already been exercised or expired"
         );
         lockedAmount -= option.lockedAmount;
-        hedgedBalance += option.hedgePremium;
-        unhedgedBalance += option.unhedgePremium;
     }
 
     function _calculateLockedAmount(uint256 amount)
@@ -353,6 +375,14 @@ abstract contract HegicPool is
         return (amount * collateralizationRatio) / 100;
     }
 
+    function _isCall() internal pure virtual returns (bool) {
+        return true;
+    }
+
+    function isCall() external pure returns (bool) {
+        return _isCall();
+    }
+
     /**
      * @notice Used for depositing the funds into the pool
      * and minting the liquidity tranche ERC721 token
@@ -360,24 +390,19 @@ abstract contract HegicPool is
      * in the pool and her unrealized P&L for this tranche.
      * @param account The liquidity provider's address
      * @param amount The size of the liquidity tranche
-     * @param hedged The type of the liquidity tranche
      * @param minShare The minimum share in the pool for the user
      **/
     function provideFrom(
         address account,
         uint256 amount,
-        bool hedged,
         uint256 minShare
     ) external override nonReentrant returns (uint256 share) {
-        uint256 totalShare = hedged ? hedgedShare : unhedgedShare;
-        uint256 balance = hedged ? hedgedBalance : unhedgedBalance;
+        uint256 totalShare = unhedgedShare;
+        uint256 balance = unhedgedBalance;
         share = totalShare > 0 && balance > 0
             ? (amount * totalShare) / balance
             : amount * INITIAL_RATE;
-        uint256 limit =
-            hedged
-                ? maxHedgedDepositAmount - hedgedBalance
-                : maxDepositAmount - hedgedBalance - unhedgedBalance;
+        uint256 limit = maxDepositAmount - unhedgedBalance;
         require(share >= minShare, "Pool Error: The mint limit is too large");
         require(share > 0, "Pool Error: The amount is too small");
         require(
@@ -385,20 +410,19 @@ abstract contract HegicPool is
             "Pool Error: Depositing into the pool is not available"
         );
 
-        if (hedged) {
-            hedgedShare += share;
-            hedgedBalance += amount;
-        } else {
-            unhedgedShare += share;
-            unhedgedBalance += amount;
-        }
+        unhedgedShare += share;
+        unhedgedBalance += amount;
 
         uint256 trancheID = tranches.length;
         tranches.push(
-            Tranche(TrancheState.Open, share, amount, block.timestamp, hedged)
+            Tranche(TrancheState.Open, share, amount, block.timestamp)
         );
         _safeMint(account, trancheID);
         token.safeTransferFrom(_msgSender(), address(this), amount);
+        if (address(rewardsManager) != address(0)) {
+            uint currentPrice = _currentPrice();
+            rewardsManager.liquidityProvided(account, _priceOf(amount, currentPrice));
+        }
     }
 
     /**
@@ -416,45 +440,18 @@ abstract contract HegicPool is
         returns (uint256 amount)
     {
         address owner = ownerOf(trancheID);
-        Tranche memory t = tranches[trancheID];
         amount = _withdraw(owner, trancheID);
-        if (t.hedged && amount < t.amount) {
-            token.safeTransferFrom(hedgePool, owner, t.amount - amount);
-            amount = t.amount;
-        }
+        
         emit Withdrawn(owner, trancheID, amount);
     }
 
-    /**
-     * @notice Used for withdrawing the funds from the pool
-     * by the hedged liquidity tranches providers
-     * in case of an urgent need to withdraw the liquidity
-     * without receiving the loss compensation from
-     * the hedging pool: the net difference between
-     * the amount deposited and the withdrawal amount.
-     * @param trancheID ID of liquidity tranche
-     * @return amount The amount received after the withdrawal
-     **/
-    function withdrawWithoutHedge(uint256 trancheID)
-        external
-        override
-        nonReentrant
-        returns (uint256 amount)
-    {
-        address owner = ownerOf(trancheID);
-        amount = _withdraw(owner, trancheID);
-        emit Withdrawn(owner, trancheID, amount);
-    }
 
     function _withdraw(address owner, uint256 trancheID)
         internal
         returns (uint256 amount)
     {
         Tranche storage t = tranches[trancheID];
-        uint256 lockupPeriod =
-            t.hedged
-                ? lockupPeriodForHedgedTranches
-                : lockupPeriodForUnhedgedTranches;
+        uint256 lockupPeriod = lockupPeriodForUnhedgedTranches;
         require(t.state == TrancheState.Open);
         require(_isApprovedOrOwner(_msgSender(), trancheID));
         require(
@@ -463,15 +460,9 @@ abstract contract HegicPool is
         );
 
         t.state = TrancheState.Closed;
-        if (t.hedged) {
-            amount = (t.share * hedgedBalance) / hedgedShare;
-            hedgedShare -= t.share;
-            hedgedBalance -= amount;
-        } else {
-            amount = (t.share * unhedgedBalance) / unhedgedShare;
-            unhedgedShare -= t.share;
-            unhedgedBalance -= amount;
-        }
+        amount = (t.share * unhedgedBalance) / unhedgedShare;
+        unhedgedShare -= t.share;
+        unhedgedBalance -= amount;
 
         token.safeTransfer(owner, amount);
     }
@@ -487,14 +478,15 @@ abstract contract HegicPool is
      * @return balance Returns the total balance of liquidity provided to the pool
      **/
     function totalBalance() public view override returns (uint256 balance) {
-        return hedgedBalance + unhedgedBalance;
+        return unhedgedBalance;
     }
 
     function _beforeTokenTransfer(
-        address,
-        address,
+        address from,
+        address to,
         uint256 id
-    ) internal view override {
+    ) internal override(ERC721, ERC721Enumerable) {
+        super._beforeTokenTransfer(from, to, id);
         require(
             tranches[id].state == TrancheState.Open,
             "Pool Error: The closed tranches can not be transferred"
@@ -534,19 +526,46 @@ abstract contract HegicPool is
         return _calculateTotalPremium(period, amount, strike);
     }
 
+    function _scaleAmount(
+        uint256 amount,
+        uint decimals,
+        uint outScale
+    ) internal pure returns (uint) {
+
+        if (decimals < outScale) {
+            return amount * (10 ** (outScale - decimals));
+        } else if (decimals > outScale) {
+            return amount / (10 ** (decimals - outScale));
+        }
+        return amount;
+        
+    }
+
     function _calculateTotalPremium(
         uint256 period,
         uint256 amount,
         uint256 strike
     ) internal view virtual returns (uint256 settlementFee, uint256 premium) {
-        (settlementFee, premium) = pricer.calculateTotalPremium(
+        uint decimals = IERC20Metadata(address(token)).decimals();
+        amount = _scaleAmount(amount, decimals, 18);
+        (, int256 latestPrice, , , ) = priceProvider.latestRoundData();
+        if (strike == 0) {
+            strike = uint256(latestPrice);
+        }
+
+        IPriceCalculator p = atmPricer;
+        if (strike < uint256(latestPrice)) {
+            p = itmPricer;
+        } else {
+            p = otmPricer;
+        }
+        
+        (settlementFee, premium) = p.calculateTotalPremium(
             period,
             amount,
-            strike
-        );
-        require(
-            settlementFee + premium > amount / 1000,
-            "HegicPool: The option's price is too low"
+            strike,
+            _isCall(),
+            decimals
         );
     }
 
@@ -556,7 +575,7 @@ abstract contract HegicPool is
      * (staking rewards) among the staking participants.
      * @param recipient New staking contract address
      **/
-    function setSettlementFeeRecipient(IHegicStaking recipient)
+    function setSettlementFeeRecipient(address recipient)
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {

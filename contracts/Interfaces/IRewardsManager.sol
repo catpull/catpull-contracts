@@ -3,7 +3,7 @@ pragma solidity ^0.8.4;
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
  * Hegic
- * Copyright (C) 2021 Hegic
+ * Copyright (C) 2021 CatPull protocol
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,15 +19,8 @@ pragma solidity ^0.8.4;
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  **/
 
-import "./ERC20Mock.sol";
-
-contract WETHMock is ERC20Mock("WETH", "Wrapped Ether", 18) {
-    function deposit() external payable {
-        _mint(msg.sender, msg.value);
-    }
-
-    function withdraw(uint256 amount) external {
-        _burn(msg.sender, amount);
-        payable(msg.sender).transfer(amount);
-    }
+interface IRewardsManager {
+    function callBought(address buyer, uint notionalSize) external;
+    function putBought(address buyer, uint notionalSize) external;
+    function liquidityProvided(address provider, uint notionalSize) external;
 }

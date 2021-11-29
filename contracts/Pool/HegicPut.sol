@@ -1,4 +1,4 @@
-pragma solidity 0.8.6;
+pragma solidity ^0.8.4;
 
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -29,6 +29,7 @@ import "./HegicPool.sol";
 
 contract HegicPUT is HegicPool {
     uint256 private immutable SpotDecimals; // 1e18
+    uint256 private immutable spotDecimalCount; // 18
     uint256 private constant TokenDecimals = 1e6; // 1e6
 
     /**
@@ -41,22 +42,36 @@ contract HegicPUT is HegicPool {
         string memory name,
         string memory symbol,
         IOptionsManager manager,
-        IPriceCalculator _pricer,
-        IHegicStaking _settlementFeeRecipient,
+        IPriceCalculator _pricer1,
+        IPriceCalculator _pricer2,
+        IPriceCalculator _pricer3,
         AggregatorV3Interface _priceProvider,
-        uint8 spotDecimals
+        uint8 spotDecimals,
+        IERC20 _assetPriceToken
     )
         HegicPool(
             _token,
             name,
             symbol,
             manager,
-            _pricer,
-            _settlementFeeRecipient,
-            _priceProvider
+            _pricer1,
+            _pricer2,
+            _pricer3,
+            _priceProvider,
+            _assetPriceToken
         )
     {
+        spotDecimalCount= spotDecimals;
         SpotDecimals = 10**spotDecimals;
+    }
+
+    function _isCall()
+        internal
+        pure
+        override
+        returns (bool)
+    {
+        return false;
     }
 
     function _profitOf(Option memory option)
@@ -95,15 +110,27 @@ contract HegicPUT is HegicPool {
         uint256 strike
     ) internal view override returns (uint256 settlementFee, uint256 premium) {
         uint256 currentPrice = _currentPrice();
-        (settlementFee, premium) = pricer.calculateTotalPremium(
+        amount = _scaleAmount(amount, spotDecimalCount, 18);
+        (, int256 latestPrice, , , ) = priceProvider.latestRoundData();
+        if (strike == 0) {
+            strike = uint256(latestPrice);
+        }
+
+        IPriceCalculator p = atmPricer;
+        if (strike < uint256(latestPrice)) {
+            p = itmPricer;
+        } else {
+            p = otmPricer;
+        }
+        
+        (settlementFee, premium) = p.calculateTotalPremium(
             period,
             amount,
-            strike
+            strike,
+            false,
+            8
         );
-        settlementFee =
-            (settlementFee * currentPrice * TokenDecimals) /
-            1e8 /
-            SpotDecimals;
-        premium = (premium * currentPrice * TokenDecimals) / 1e8 / SpotDecimals;
+        settlementFee = (settlementFee * currentPrice * TokenDecimals) / 1e16;
+        premium = (premium * currentPrice * TokenDecimals) / 1e16;
     }
 }

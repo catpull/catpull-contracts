@@ -1,4 +1,4 @@
-pragma solidity 0.8.6;
+pragma solidity ^0.8.4;
 
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -23,7 +23,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@chainlink/contracts/src/v0.7/interfaces/AggregatorV3Interface.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router01.sol";
 
 // /**
@@ -47,7 +47,9 @@ interface IPriceCalculator {
     function calculateTotalPremium(
         uint256 period,
         uint256 amount,
-        uint256 strike
+        uint256 strike,
+        bool isCall,
+        uint256 outDecimals
     ) external view returns (uint256 settlementFee, uint256 premium);
 }
 
@@ -58,9 +60,15 @@ interface IPriceCalculator {
  *   exercises the ITM (in-the-money) options with the unrealized P&L and settles them,
  *   unlocks the expired options and distributes the premiums among the liquidity providers.
  **/
-interface IHegicPool is IERC721, IPriceCalculator {
+interface IHegicPool is IERC721 {
     enum OptionState {Invalid, Active, Exercised, Expired}
     enum TrancheState {Invalid, Open, Closed}
+
+    function calculateTotalPremium(
+        uint256 period,
+        uint256 amount,
+        uint256 strike
+    ) external view returns (uint256 settlementFee, uint256 premium);
 
     /**
      * @param state The state of the option: Invalid, Active, Exercised, Expired
@@ -68,8 +76,7 @@ interface IHegicPool is IERC721, IPriceCalculator {
      * @param amount The option size
      * @param lockedAmount The option collateral size locked
      * @param expired The option expiration timestamp
-     * @param hedgePremium The share of the premium paid for hedging from the losses
-     * @param unhedgePremium The share of the premium paid to the hedged liquidity provider
+     * @param premium The share of the premium paid to the hedged liquidity provider
      **/
     struct Option {
         OptionState state;
@@ -77,8 +84,8 @@ interface IHegicPool is IERC721, IPriceCalculator {
         uint256 amount;
         uint256 lockedAmount;
         uint256 expired;
-        uint256 hedgePremium;
-        uint256 unhedgePremium;
+        uint256 premium;
+        uint256 profit;
     }
 
     /**
@@ -86,14 +93,12 @@ interface IHegicPool is IERC721, IPriceCalculator {
      * @param share The liquidity provider's share in the pool
      * @param amount The size of liquidity provided
      * @param creationTimestamp The liquidity deposit timestamp
-     * @param hedged The liquidity tranche type: hedged or unhedged (classic)
      **/
     struct Tranche {
         TrancheState state;
         uint256 share;
         uint256 amount;
         uint256 creationTimestamp;
-        bool hedged;
     }
 
     /**
@@ -136,12 +141,7 @@ interface IHegicPool is IERC721, IPriceCalculator {
      **/
     function exercise(uint256 id) external;
 
-    function setLockupPeriod(uint256, uint256) external;
-
-    /**
-     * @param value The hedging pool address
-     **/
-    function setHedgePool(address value) external;
+    function setLockupPeriod(uint256) external;
 
     /**
      * @param trancheID The liquidity tranche ID
@@ -151,7 +151,6 @@ interface IHegicPool is IERC721, IPriceCalculator {
      **/
     function withdraw(uint256 trancheID) external returns (uint256 amount);
 
-    function pricer() external view returns (IPriceCalculator);
 
     /**
      * @return amount The unhedged liquidity size
@@ -160,21 +159,13 @@ interface IHegicPool is IERC721, IPriceCalculator {
     function unhedgedBalance() external view returns (uint256 amount);
 
     /**
-     * @return amount The hedged liquidity size
-     * (protected from the losses on selling the options)
-     **/
-    function hedgedBalance() external view returns (uint256 amount);
-
-    /**
      * @param account The liquidity provider's address
      * @param amount The size of the liquidity tranche
-     * @param hedged The type of the liquidity tranche
      * @param minShare The minimum share in the pool of the user
      **/
     function provideFrom(
         address account,
         uint256 amount,
-        bool hedged,
         uint256 minShare
     ) external returns (uint256 share);
 
@@ -190,14 +181,6 @@ interface IHegicPool is IERC721, IPriceCalculator {
         uint256 amount,
         uint256 strike
     ) external returns (uint256 id);
-
-    /**
-     * @param trancheID The liquidity tranche ID
-     * @return amount The amount to be received after the withdrawal
-     **/
-    function withdrawWithoutHedge(uint256 trancheID)
-        external
-        returns (uint256 amount);
 
     /**
      * @return amount The total liquidity provided into the pool
@@ -217,8 +200,7 @@ interface IHegicPool is IERC721, IPriceCalculator {
      * @return amount The option size
      * @return lockedAmount The option collateral size locked
      * @return expired The option expiration timestamp
-     * @return hedgePremium The share of the premium paid for hedging from the losses
-     * @return unhedgePremium The share of the premium paid to the hedged liquidity provider
+     * @return premium The share of the premium paid to the hedged liquidity provider
      **/
     function options(uint256 id)
         external
@@ -229,8 +211,8 @@ interface IHegicPool is IERC721, IPriceCalculator {
             uint256 amount,
             uint256 lockedAmount,
             uint256 expired,
-            uint256 hedgePremium,
-            uint256 unhedgePremium
+            uint256 premium,
+            uint256 profit
         );
 
     /**
@@ -238,7 +220,6 @@ interface IHegicPool is IERC721, IPriceCalculator {
      * @return share The liquidity provider's share in the pool
      * @return amount The size of liquidity provided
      * @return creationTimestamp The liquidity deposit timestamp
-     * @return hedged The liquidity tranche type: hedged or unhedged (classic)
      **/
     function tranches(uint256 id)
         external
@@ -247,33 +228,8 @@ interface IHegicPool is IERC721, IPriceCalculator {
             TrancheState state,
             uint256 share,
             uint256 amount,
-            uint256 creationTimestamp,
-            bool hedged
+            uint256 creationTimestamp
         );
-}
-
-/**
- * @notice The interface for the contract that stakes HEGIC tokens
- *   through buying microlots (any amount of HEGIC tokens per microlot)
- *   and staking lots (888,000 HEGIC per lot), accumulates the staking
- *   rewards (settlement fees) and distributes the staking rewards among
- *   the microlots and staking lots holders (should be claimed manually).
- **/
-interface IHegicStaking {
-    event Claim(address indexed account, uint256 amount);
-    event Profit(uint256 amount);
-    event MicroLotsAcquired(address indexed account, uint256 amount);
-    event MicroLotsSold(address indexed account, uint256 amount);
-
-    function claimProfits(address account) external returns (uint256 profit);
-
-    function buyStakingLot(uint256 amount) external;
-
-    function sellStakingLot(uint256 amount) external;
-
-    function distributeUnrealizedRewards() external;
-
-    function profitOf(address account) external view returns (uint256);
 }
 
 interface IWETH is IERC20 {

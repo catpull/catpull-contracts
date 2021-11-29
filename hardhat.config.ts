@@ -3,12 +3,9 @@ import "@nomiclabs/hardhat-waffle"
 import "@nomiclabs/hardhat-etherscan"
 import "hardhat-typechain"
 import "hardhat-deploy"
-import "hardhat-abi-exporter"
 import "hardhat-deploy-ethers"
-import "hardhat-docgen"
 import "hardhat-gas-reporter"
 import "hardhat-watcher"
-import "hardhat-local-networks-config-plugin"
 import "solidity-coverage"
 import {config as dotEnvConfig} from "dotenv"
 
@@ -16,13 +13,22 @@ dotEnvConfig()
 
 const {ETHERSCAN_API_KEY, COIN_MARKET_CAP} = process.env
 
-const config: HardhatUserConfig = {
+const config: HardhatUserConfig & { docgen: any } = {
   localNetworksConfig: "~/.hardhat/networks.json",
   defaultNetwork: "hardhat",
   solidity: {
     compilers: [
       {
-        version: "0.8.6",
+        version: "0.8.4",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
+      },
+      {
+        version: "0.7.0",
         settings: {
           optimizer: {
             enabled: true,
@@ -51,6 +57,10 @@ const config: HardhatUserConfig = {
     ],
   },
   networks: {
+    testnet: {
+      url: "https://api.avax-test.network/ext/bc/C/rpc",
+      accounts: [process.env.FUJI_PRIVATE_KEY as string]
+    },
     coverage: {
       url: "http://127.0.0.1:8555",
     },
@@ -76,7 +86,7 @@ const config: HardhatUserConfig = {
   gasReporter: {
     currency: "USD",
     coinmarketcap: COIN_MARKET_CAP,
-    enabled: process.env.REPORT_GAS ? true : false,
+    enabled: (process.env as any).REPORT_GAS != null,
   },
   docgen: {
     path: "./docs",
