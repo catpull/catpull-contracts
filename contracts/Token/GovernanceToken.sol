@@ -19,8 +19,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  **/
-contract Ignition is ERC20, Ownable {
-    constructor() ERC20("CatPull Staking Token", "IGNI") {
+contract GovernanceToken is ERC20, Ownable {
+    constructor() ERC20("CatPull", "Pull") {
         _mint(msg.sender, 1000000000 * 10 ** decimals());
     }
 

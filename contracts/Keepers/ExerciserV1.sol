@@ -22,7 +22,7 @@ import "../Options/OptionsManager.sol";
 import "../Pool/HegicPool.sol";
 
 contract ExerciserV1 {
-    uint constant public PAGE_SIZE = 25;
+    uint constant public PAGE_SIZE = 50;
     OptionsManager private immutable optionsManager;
     constructor(OptionsManager manager) {
         optionsManager = manager;
@@ -42,6 +42,9 @@ contract ExerciserV1 {
     
     function numberOfPages() external view returns (uint) {
         uint totalOptions = optionsManager.nextTokenId();
+        if (totalOptions == 0) {
+            return 0;
+        }
         return 1 + totalOptions / PAGE_SIZE;
     }
 

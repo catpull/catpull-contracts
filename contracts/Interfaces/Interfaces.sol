@@ -77,6 +77,7 @@ interface IHegicPool is IERC721 {
      * @param lockedAmount The option collateral size locked
      * @param expired The option expiration timestamp
      * @param premium The share of the premium paid to the hedged liquidity provider
+     * @param profit If Option is exercised, this will contain the profit the user made (in stablecoin)
      **/
     struct Option {
         OptionState state;

@@ -23,7 +23,7 @@ import "../Options/OptionsManager.sol";
 import "../Pool/HegicPool.sol";
 
 contract ExpirerV1 {
-    uint public constant PAGE_SIZE = 25;
+    uint public constant PAGE_SIZE = 50;
     OptionsManager private immutable optionsManager;
 
     constructor(OptionsManager manager) {
@@ -43,6 +43,9 @@ contract ExpirerV1 {
     
     function numberOfPages() external view returns (uint) {
         uint totalOptions = optionsManager.nextTokenId();
+        if (totalOptions == 0) {
+            return 0;
+        }
         return 1 + totalOptions / PAGE_SIZE;
     }
 
@@ -62,13 +65,11 @@ contract ExpirerV1 {
         }
     }
 
-    // const pages = await inst.numberOfPages()
-    // const options = []
-    // for (let page = 0; i < pages ; i ++) {
-    //     const [arr, len] = await inst.callStatic.search(page);
-    //     options.push(...arr.slice(0, len))
+    // const pages = (await exerciserV1.numberOfPages()).toNumber()
+    // const options: BigNumber[] = []
+    // for (let page = 0; page < pages ; page ++) {
+    //     const {len, out} = await exerciserV1.search(page);
+    //     options.push(...out.slice(0, len.toNumber()))
     // }
-    // for(let chunk of chunify(options, 10)) {
-    //     await(await inst.execute(chunk)).wait(1)
-    // }
+    // await(await exerciserV1.run(options)).wait(1)
 }

@@ -7,7 +7,7 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
   const {deployer} = await getNamedAccounts()
 
   await deploy("GovernanceToken", {
-    contract: "Ignition",
+    contract: "CatPullToken",
     from: deployer,
     log: true,
     args: [],
