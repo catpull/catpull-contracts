@@ -1,7 +1,6 @@
 import {HardhatRuntimeEnvironment} from "hardhat/types"
 import {HegicPool} from "../typechain/HegicPool"
 import {OptionsManager} from "../typechain/OptionsManager"
-import {InitialRewardsManager} from "../typechain/InitialRewardsManager"
 
 const INITIVRAte = "900000000000000000" // 90%
 
@@ -22,11 +21,6 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
     args: [governanceToken.address]
   })
 
-  const rewardsManagerInstance = (await ethers.getContract(
-    "RewardsManager",
-  )) as InitialRewardsManager
-
-
   await execute(
     "GovernanceToken",
     {from: deployer, log: true, waitConfirmations: 1},
@@ -41,13 +35,6 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
     log: true,
   })
 
-  await deploy("Exerciser", {
-    from: deployer,
-    waitConfirmations: 1,
-    log: true,
-    args: [optionsManagerInst.address],
-  })
-
   const blackScholesModelInst = await deploy("BlackScholes", {
     contract: "BlackScholesModel",
     from: deployer,
@@ -60,7 +47,7 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
     "OptionsManager",
   )) as OptionsManager
 
-  const inputConstaintInst = await deploy("InputConstaint", {
+  await deploy("InputConstaint", {
     contract: "InitialInputConstraint",
     from: deployer,
     waitConfirmations: 1,

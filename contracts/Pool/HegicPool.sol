@@ -263,7 +263,7 @@ abstract contract HegicPool is
             }
         }
         token.safeTransferFrom(
-            _msgSender(),
+            msg.sender,
             address(this),
             premium + settlementFee
         );
@@ -313,15 +313,20 @@ abstract contract HegicPool is
      **/
     function exercise(uint256 id) external override {
         Option storage option = options[id];
-        uint256 profit = _profitOf(option);
-        require(
-            optionsManager.isApprovedOrOwner(_msgSender(), id),
-            "Pool Error: msg.sender can't exercise this option"
-        );
         require(
             option.expired > block.timestamp,
             "Pool Error: The option has already expired"
         );
+
+        if (block.timestamp <= option.expired - 30 minutes) {
+            // Only owners can exercise at any time
+            require(
+                optionsManager.isApprovedOrOwner(msg.sender, id),
+                "Pool Error: msg.sender can't exercise this option"
+            );
+        }
+
+        uint256 profit = _profitOf(option);
         require(
             profit > 0,
             "Pool Error: There are no unrealized profits for this option"
@@ -350,6 +355,10 @@ abstract contract HegicPool is
      **/
     function unlock(uint256 id) external override {
         Option storage option = options[id];
+        require(
+            option.state == OptionState.Active,
+            "Option must be active"
+        );
         require(
             option.expired < block.timestamp,
             "Pool Error: The option has not expired yet"
@@ -418,7 +427,7 @@ abstract contract HegicPool is
             Tranche(TrancheState.Open, share, amount, block.timestamp)
         );
         _safeMint(account, trancheID);
-        token.safeTransferFrom(_msgSender(), address(this), amount);
+        token.safeTransferFrom(msg.sender, address(this), amount);
         if (address(rewardsManager) != address(0)) {
             uint currentPrice = _currentPrice();
             rewardsManager.liquidityProvided(account, _priceOf(amount, currentPrice));
@@ -453,7 +462,7 @@ abstract contract HegicPool is
         Tranche storage t = tranches[trancheID];
         uint256 lockupPeriod = lockupPeriodForUnhedgedTranches;
         require(t.state == TrancheState.Open);
-        require(_isApprovedOrOwner(_msgSender(), trancheID));
+        require(_isApprovedOrOwner(msg.sender, trancheID));
         require(
             block.timestamp > t.creationTimestamp + lockupPeriod,
             "Pool Error: The withdrawal is locked up"

@@ -6,7 +6,6 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
   const {deployer} = await getNamedAccounts()
 
   const WAVAX = await get("WAVAX")
-  const StableCoin = await get("USDC")
   const OptionsManager = await get("OptionsManager")
   const uniswapRouter = await get("UniswapRouter")
   console.log("Deploying facade")

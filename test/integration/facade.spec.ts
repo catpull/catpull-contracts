@@ -27,7 +27,6 @@ describe("Facade", async () => {
   let uiProvider: UiProvider
   let HegicATMPUTWAVAX: HegicPool
   let ethPriceFeed: AggregatorV3Interface
-  let manager: OptionsManager
 
   beforeEach(async () => {
     await deployments.fixture()
@@ -48,7 +47,6 @@ describe("Facade", async () => {
     HegicATMPUTWETH = (await ethers.getContract("HegicWETHPUT")) as HegicPool
     HegicATMCALLWAVAX = (await ethers.getContract("HegicWAVAXCALL")) as HegicPool
     HegicATMPUTWAVAX = (await ethers.getContract("HegicWAVAXPUT")) as HegicPool
-    manager = (await ethers.getContract("OptionsManager")) as OptionsManager
     WAVAX.deposit({value: ethers.utils.parseUnits("100")})
 
     await WETH.connect(alice).mint(ethers.utils.parseUnits("100"))
