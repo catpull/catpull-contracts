@@ -119,7 +119,7 @@ contract HegicPUT is HegicPool {
         IPriceCalculator p = atmPricer;
         if (strike < uint256(latestPrice)) {
             p = itmPricer;
-        } else {
+        } else if (strike > uint(latestPrice)) {
             p = otmPricer;
         }
         

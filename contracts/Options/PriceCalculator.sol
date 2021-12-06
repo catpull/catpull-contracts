@@ -18,6 +18,7 @@ pragma solidity ^0.8.4;
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  **/
+// import "hardhat/console.sol";
 import "../Interfaces/Interfaces.sol";
 import "../Interfaces/IBlackScholesModel.sol";
 
@@ -33,13 +34,11 @@ contract PriceCalculator is IPriceCalculator, Ownable {
     event RiskFreeRateChanged(int);
     event IVChanged(int);
     event SwingRateChanged(int);
-    event UtilizationRateChangeChanged(uint);
     event DaoShareChanged(uint);
 
     int256 public riskFreeRate = 0; // 0%
     int256 public impliedVolRate = 900000000000000000; // 90%
     int256 public swingRate = -150000000000000000;  // -20%
-    uint256 public utilizationRate = 0;
     uint256 public daoshare = 10;
     AggregatorV3Interface public priceProvider;
     IHegicPool public pool;
@@ -58,15 +57,33 @@ contract PriceCalculator is IPriceCalculator, Ownable {
         model = _model;
     }
 
+
+    /**
+     * @notice Used to get current params used by the pricing module
+     **/
+    function params() external view returns (int, int, int, uint) {
+        return (impliedVolRate, riskFreeRate, swingRate, daoshare);
+    }
+
     /**
      * @notice Used for adjusting the options prices (the premiums)
      * while balancing the asset's implied volatility rate.
      * @param value New IVRate value
      **/
     function setImpliedVolRate(int256 value) external onlyOwner {
-        require(value >= 0 && value <= 200000000000000000000);
+        require(value >= 0 && value <= 200000000000000000000, "OutOffBounds");
         impliedVolRate = value;
         emit IVChanged(value);
+    }
+
+    /**
+     * @notice Used for adjusting the riskfree rate for the equation
+     * @param value New risk free rate value
+     **/
+    function setRiskFreeRate(int256 value) external onlyOwner {
+        require(value >= 0 && value <= 200000000000000000000, "OutOffBounds");
+        riskFreeRate = value;
+        emit RiskFreeRateChanged(value);
     }
 
     /**
@@ -75,18 +92,9 @@ contract PriceCalculator is IPriceCalculator, Ownable {
      * @param value New IVRate value
      **/
     function setDaoShare(uint256 value) external onlyOwner {
-        require(value >= 10, "value too high");
+        require(value < 10, "OutOffBounds");
         daoshare = value;
         emit DaoShareChanged(value);
-    }
-
-    /**
-     * @notice Used for updating utilizationRate value
-     * @param value New utilizationRate value
-     **/
-    function setUtilizationRate(uint256 value) external onlyOwner {
-        utilizationRate = value;
-        emit UtilizationRateChangeChanged(value);
     }
 
     /**
@@ -94,7 +102,7 @@ contract PriceCalculator is IPriceCalculator, Ownable {
      * @param value New swingRate value
      **/
     function setSwingRate(int256 value) external onlyOwner {
-        require(value >= -100000000000000000000 && value <= 100000000000000000000);
+        require(value >= -100000000000000000000 && value <= 100000000000000000000, "OutOffBounds");
         swingRate = value;
         emit SwingRateChanged(value);
     }
@@ -123,6 +131,8 @@ contract PriceCalculator is IPriceCalculator, Ownable {
         require(period >= 1 days && period <= 30 days, "InvalidPeriod");
         require(strike <= currentPrice + currentPrice / 5, "StrikeTooHigh");
         require(strike >= currentPrice - currentPrice / 5, "StrikeTooLow");
+
+        
         (int callPrice, int putPrice) = _calculatePrice(
             currentPrice * 10**10,
             amount,
@@ -138,15 +148,6 @@ contract PriceCalculator is IPriceCalculator, Ownable {
             total *= 10 ** (outDecimals - 18);
         }
 
-        // Increase premium as pool gets more used
-        // uint256 poolBalance = pool.totalBalance();
-        // uint256 lockedAmount = pool.lockedAmount() + amount;
-        // uint256 utilization = (lockedAmount * 100e8) / poolBalance;
-
-        // if (utilization > 40e8) {
-        //     total += (total * (utilization - 40e8) * utilizationRate) / 40e16;
-        // }
-
         // Calculated in USD
         settlementFee = total / daoshare;
         premium = total - settlementFee;
@@ -158,6 +159,15 @@ contract PriceCalculator is IPriceCalculator, Ownable {
         uint period,
         uint strike
     ) public view returns (int256 callPrice, int putPrice) {
+        // console.log("currentPrice", currentPrice);
+        // console.log("amount", amount);
+        // console.log("period", period);
+        // console.log("strike", strike);
+        // console.log("amount", amount);
+        // console.log("SR,IV,RFR:");
+        // console.logInt(swingRate);
+        // console.logInt(impliedVolRate);
+        // console.logInt(riskFreeRate);
         (callPrice, putPrice) = model.calculatePremiums(
             int(amount),
             int(currentPrice),
@@ -167,6 +177,9 @@ contract PriceCalculator is IPriceCalculator, Ownable {
             impliedVolRate,
             riskFreeRate
         );
+        // console.log("Result:");
+        // console.logInt(callPrice);
+        // console.logInt(putPrice);
     }
 
     /**

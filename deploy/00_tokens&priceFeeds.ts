@@ -7,7 +7,7 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
   const {deployer} = await getNamedAccounts()
 
   await deploy("GovernanceToken", {
-    contract: "CatPullToken",
+    contract: "GovernanceToken",
     from: deployer,
     log: true,
     args: [],
@@ -76,57 +76,30 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
       args: ["WBTC (Mock)", "WBTC", 8],
       waitConfirmations: 1
     })
-    // if (network.name === "testnet") {
-    //   await deploy("WBTCPriceProvider", {
-    //     contract: "PriceProviderMock",
-    //     from: deployer,
-    //     log: true,
-    //     args: [54500e8],
-    //     waitConfirmations: 1
-    //   })
+    
+    await deploy("WBTCPriceProvider", {
+      contract: "PriceProviderMock",
+      from: deployer,
+      log: true,
+      args: [50000e8],
+      waitConfirmations: 1
+    })
 
-    //   await deploy("WETHPriceProvider", {
-    //     contract: "PriceProviderMock",
-    //     from: deployer,
-    //     log: true,
-    //     args: [4085e8],
-    //     waitConfirmations: 1
-    //   })
+    await deploy("WETHPriceProvider", {
+      contract: "PriceProviderMock",
+      from: deployer,
+      log: true,
+      args: [2500e8],
+      waitConfirmations: 1
+    })
 
-    //   await deploy("WAVAXPriceProvider", {
-    //     contract: "PriceProviderMock",
-    //     from: deployer,
-    //     log: true,
-    //     args: [110e8],
-    //     waitConfirmations: 1
-    //   })
-
-    // } else {
-      
-      await deploy("WBTCPriceProvider", {
-        contract: "PriceProviderMock",
-        from: deployer,
-        log: true,
-        args: [50000e8],
-        waitConfirmations: 1
-      })
-
-      await deploy("WETHPriceProvider", {
-        contract: "PriceProviderMock",
-        from: deployer,
-        log: true,
-        args: [2500e8],
-        waitConfirmations: 1
-      })
-
-      await deploy("WAVAXPriceProvider", {
-        contract: "PriceProviderMock",
-        from: deployer,
-        log: true,
-        args: [95e8],
-        waitConfirmations: 1
-      })
-    // }
+    await deploy("WAVAXPriceProvider", {
+      contract: "PriceProviderMock",
+      from: deployer,
+      log: true,
+      args: [95e8],
+      waitConfirmations: 1
+    })
   }
   console.log("Tokens: done")
 }

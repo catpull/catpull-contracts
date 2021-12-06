@@ -1,7 +1,7 @@
 pragma solidity ^0.8.4;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "../Interfaces/IRewardsManager.sol";
-import "../Token/Ignition.sol";
+import "../Token/GovernanceToken.sol";
 
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -23,7 +23,7 @@ import "../Token/Ignition.sol";
  **/
 
 contract InitialRewardsManager is IRewardsManager, Ownable {
-    Ignition public rewardToken;
+    GovernanceToken public rewardToken;
     mapping(address => bool) public pools;
 
     modifier onlyPool {
@@ -36,7 +36,7 @@ contract InitialRewardsManager is IRewardsManager, Ownable {
     // liquidty results in a 50 IGNI reward
     uint public emissionRate = 20;
 
-    constructor(Ignition token) {
+    constructor(GovernanceToken token) {
         rewardToken = token;
     }
 

@@ -204,7 +204,7 @@ describe("Facade", async () => {
         )
       
       const overview = await uiProvider.optionsViewData(await alice.getAddress(), 0)
-      expect(overview.totalOptions.toNumber()).to.eq(1);
+      expect(overview.totalEntries.toNumber()).to.eq(1);
     })
 
     it("should have gotten a reward after creating an option", async () => {

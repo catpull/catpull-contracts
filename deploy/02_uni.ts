@@ -26,46 +26,24 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
     const WETH = (await ethers.getContract("WETH")) as Erc20Mock
     const WAVAX = (await ethers.getContract("WAVAX")) as WavaxMock
     const WBTC = (await ethers.getContract("WBTC")) as Erc20Mock
-    const USDC = (await ethers.getContract("USDC")) as Erc20Mock
-    const tokens = [WETH.address, WBTC.address, USDC.address]
+    const STABLE = (await ethers.getContract("USDC")) as Erc20Mock
+    const tokens = [WETH.address, WBTC.address, WAVAX.address]
     const amounts = {
-      [WBTC.address]: {
+      [STABLE.address]: {
         [WETH.address]: [
-          ethers.utils.parseUnits("100", 8),
-          ethers.utils.parseUnits("2000", 18),
-        ],
-      },
-      [USDC.address]: {
-        [WETH.address]: [
-          ethers.utils.parseUnits("2500000", 6),
-          ethers.utils.parseUnits("1000", 18),
+          ethers.utils.parseUnits("25000000", 6),
+          ethers.utils.parseUnits("10000", 18),
         ],
         [WBTC.address]: [
-          ethers.utils.parseUnits("5000000", 6),
-          ethers.utils.parseUnits("100", 8),
+          ethers.utils.parseUnits("50000000", 6),
+          ethers.utils.parseUnits("1000", 8),
+        ],
+        [WAVAX.address]: [
+          ethers.utils.parseUnits("9500000", 6),
+          ethers.utils.parseUnits("100000", 18),
         ],
       },
     }
-    // if (network.name === "testnet") {
-    //   amounts = {
-    //     [WBTC.address]: {
-    //       [WETH.address]: [
-    //         ethers.utils.parseUnits("149", 8),
-    //         ethers.utils.parseUnits("2000", 18),
-    //       ],
-    //     },
-    //     [USDC.address]: {
-    //       [WETH.address]: [
-    //         ethers.utils.parseUnits("4085000", 6),
-    //         ethers.utils.parseUnits("1000", 18),
-    //       ],
-    //       [WBTC.address]: [
-    //         ethers.utils.parseUnits("5450000", 6),
-    //         ethers.utils.parseUnits("100", 8),
-    //       ],
-    //     },
-    //   }
-    // }
     await deploy("UniswapV2Factory", {
       contract: "UniswapV2Factory",
       from: deployer,
@@ -98,34 +76,34 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
     })
 
     console.log("Minting")
-    await (await WETH.mint(ethers.utils.parseUnits("10000", 18))).wait(1)
-    await (await WBTC.mint(ethers.utils.parseUnits("500", 8))).wait(1)
-    await (await USDC.mint(ethers.utils.parseUnits("50000000", 6))).wait(1)
+    await (await WETH.mint(ethers.utils.parseUnits("100000", 18))).wait(1)
+    await (await WAVAX.mint(ethers.utils.parseUnits("100000000", 18))).wait(1)
+    await (await WBTC.mint(ethers.utils.parseUnits("5000", 8))).wait(1)
+    await (await STABLE.mint(ethers.utils.parseUnits("500000000", 6))).wait(1)
 
     console.log("Creating pairs and adding liquidity")
-    for (let i = 0; i < tokens.length; i++)
-      for (let j = 0; j < i; j++) {
-        await (await uniswapV2Library.createPair(tokens[i], tokens[j])).wait(1)
-        const p = await uniswapV2Library.getPair(tokens[i], tokens[j])
-        console.log(p)
-        const pp = (await ethers.getContractAt(
-          "UniswapV2Pair",
-          p,
-        )) as UniswapV2Pair
-        const ppp = await ethers
-          .getContractAt("ERC20", tokens[i])
-          .then((instance) =>
-            (instance as Erc20Mock).transfer(p, amounts[tokens[i]][tokens[j]][0]),
-          )
-        await ppp.wait(1)
-        const pppp = await ethers
-          .getContractAt("ERC20", tokens[j])
-          .then((instance) =>
-            (instance as Erc20Mock).transfer(p, amounts[tokens[i]][tokens[j]][1]),
-          )
-        await pppp.wait(1)
-        await (await pp.mint(deployer)).wait(1)
-      }
+    for (let j = 0; j < tokens.length; j++) {
+      await (await uniswapV2Library.createPair(STABLE.address, tokens[j])).wait(1)
+      const p = await uniswapV2Library.getPair(STABLE.address, tokens[j])
+      console.log(p)
+      const pp = (await ethers.getContractAt(
+        "UniswapV2Pair",
+        p,
+      )) as UniswapV2Pair
+      const ppp = await ethers
+        .getContractAt("ERC20", STABLE.address)
+        .then((instance) =>
+          (instance as Erc20Mock).transfer(p, amounts[STABLE.address][tokens[j]][0]),
+        )
+      await ppp.wait(1)
+      const pppp = await ethers
+        .getContractAt("ERC20", tokens[j])
+        .then((instance) =>
+          (instance as Erc20Mock).transfer(p, amounts[STABLE.address][tokens[j]][1]),
+        )
+      await pppp.wait(1)
+      await (await pp.mint(deployer)).wait(1)
+    }
   }
 }
 

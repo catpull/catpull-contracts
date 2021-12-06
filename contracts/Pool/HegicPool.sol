@@ -238,9 +238,9 @@ abstract contract HegicPool is
         (uint256 settlementFee, uint256 premium) = _calculateTotalPremium(period, amount, strike);
         uint premiumPaid = settlementFee + premium;
         if (_isCall()) {
-            premiumPaid = _priceOf(premiumPaid, price);
+            premiumPaid = _priceOf(premiumPaid, price); // 18 digit precision
         } else {
-            premiumPaid = premiumPaid * 1e12;
+            premiumPaid = premiumPaid * 1e12; // Move premium 12 digits
         }
         
         lockedAmount += amountToBeLocked;
@@ -565,7 +565,7 @@ abstract contract HegicPool is
         IPriceCalculator p = atmPricer;
         if (strike < uint256(latestPrice)) {
             p = itmPricer;
-        } else {
+        } else if (strike > uint(latestPrice)) {
             p = otmPricer;
         }
         

@@ -1,4 +1,5 @@
 import {HardhatRuntimeEnvironment} from "hardhat/types"
+import { Erc20 } from "../typechain"
 import {HegicPool} from "../typechain/HegicPool"
 import {OptionsManager} from "../typechain/OptionsManager"
 
@@ -57,6 +58,11 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
 
   const setupPoolsForAsset = async (assetName: string) => {
     const asset = await get(assetName)
+
+    const assetInst = (await ethers.getContract(
+      assetName,
+    )) as Erc20
+    const decimals = await assetInst.decimals()
     const priceProvider = await get(`${assetName}PriceProvider`)
     const callPoolName = `Hegic${assetName}CALL`
     const putPoolName = `Hegic${assetName}PUT`
@@ -93,7 +99,7 @@ async function deployment(hre: HardhatRuntimeEnvironment): Promise<void> {
         ethers.constants.AddressZero,
         ethers.constants.AddressZero,
         priceProvider.address,
-        18,
+        decimals,
         asset.address,
       ],
     })

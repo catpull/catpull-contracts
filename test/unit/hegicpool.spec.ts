@@ -555,7 +555,7 @@ describe("HegicPool", async () => {
       await ethers.provider.send("evm_mine", [])
       await hegicPool.unlock(BN.from(0))
       await expect(hegicPool.unlock(BN.from(0))).to.be.revertedWith(
-        "Pool Error: The option with such an ID has already been exercised or expired",
+        "Option must be active",
       )
     })
     it("should set the option state to Expired", async () => {

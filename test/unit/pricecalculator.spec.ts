@@ -90,5 +90,46 @@ describe("PriceCalculator", async () => {
         expect(feeResponsePut.settlementFee.add(feeResponsePut.premium)).to.be.eq("7713424")
       })
     })
+
+    describe("snapshots", async () => {
+      it("snapshot1", async () => {
+        const btcPriceCalculator = (await ethers.getContract(
+          "WBTCCallPriceCalculator",
+        )) as PriceCalculator
+        await btcPriceCalculator.setImpliedVolRate("700000000000000000")
+        await btcPriceCalculator.setRiskFreeRate("100000000000000000")
+        await btcPriceCalculator.setSwingRate("0")
+        
+        const out = await btcPriceCalculator.calculateTotalPremium(
+          BN.from("2592000"),
+          BN.from(ethers.utils.parseUnits("1", 18)),
+          BN.from(ethers.utils.parseUnits("50000", 8)),
+          true,
+          8
+        )
+        
+        expect(out.premium.add(out.settlementFee).toString()).to.be.eq("8372992") // 0.08372992 * 50000 => 4186.496
+      })
+      it("snapshot2", async () => {
+        const btcPriceCalculator = (await ethers.getContract(
+          "WBTCPutPriceCalculator",
+        )) as PriceCalculator
+        await btcPriceCalculator.setImpliedVolRate("700000000000000000")
+        await btcPriceCalculator.setRiskFreeRate("100000000000000000")
+        await btcPriceCalculator.setSwingRate("0")
+        
+        const out = await btcPriceCalculator.calculateTotalPremium(
+          BN.from("2592000"),
+          BN.from(ethers.utils.parseUnits("1", 18)),
+          BN.from(ethers.utils.parseUnits("50000", 8)),
+          false,
+          8
+        )
+        
+        expect(out.premium.add(out.settlementFee).toString()).to.be.eq("7554443") // 0.07554443 * 50000 => 3778.68749
+      })
+    })
+
+    
   })
 })
