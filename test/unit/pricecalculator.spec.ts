@@ -47,7 +47,6 @@ describe("PriceCalculator", async () => {
       expect(await priceCalculator.impliedVolRate()).to.be.eq(
         BN.from("900000000000000000"),
       )
-      expect(await priceCalculator.utilizationRate()).to.be.eq(BN.from(0))
       expect(await priceCalculator.priceProvider()).to.be.eq(
         fakePriceProvider.address,
       )
@@ -76,18 +75,22 @@ describe("PriceCalculator", async () => {
           BN.from(ethers.utils.parseUnits("1")),
           BN.from("260000000000"),
           true,
-          8
+          8,
         )
-        expect(feeResponseCall.settlementFee.add(feeResponseCall.premium)).to.be.eq("9207709")
+        expect(
+          feeResponseCall.settlementFee.add(feeResponseCall.premium),
+        ).to.be.eq("9207709")
 
         const feeResponsePut = await priceCalculator.calculateTotalPremium(
           BN.from("2592000"),
           BN.from(ethers.utils.parseUnits("1")),
           BN.from("240000000000"),
           false,
-          8
+          8,
         )
-        expect(feeResponsePut.settlementFee.add(feeResponsePut.premium)).to.be.eq("7713424")
+        expect(
+          feeResponsePut.settlementFee.add(feeResponsePut.premium),
+        ).to.be.eq("7713424")
       })
     })
 
@@ -99,16 +102,18 @@ describe("PriceCalculator", async () => {
         await btcPriceCalculator.setImpliedVolRate("700000000000000000")
         await btcPriceCalculator.setRiskFreeRate("100000000000000000")
         await btcPriceCalculator.setSwingRate("0")
-        
+
         const out = await btcPriceCalculator.calculateTotalPremium(
           BN.from("2592000"),
           BN.from(ethers.utils.parseUnits("1", 18)),
           BN.from(ethers.utils.parseUnits("50000", 8)),
           true,
-          8
+          8,
         )
-        
-        expect(out.premium.add(out.settlementFee).toString()).to.be.eq("8372992") // 0.08372992 * 50000 => 4186.496
+
+        expect(out.premium.add(out.settlementFee).toString()).to.be.eq(
+          "8372992",
+        ) // 0.08372992 * 50000 => 4186.496
       })
       it("snapshot2", async () => {
         const btcPriceCalculator = (await ethers.getContract(
@@ -117,19 +122,19 @@ describe("PriceCalculator", async () => {
         await btcPriceCalculator.setImpliedVolRate("700000000000000000")
         await btcPriceCalculator.setRiskFreeRate("100000000000000000")
         await btcPriceCalculator.setSwingRate("0")
-        
+
         const out = await btcPriceCalculator.calculateTotalPremium(
           BN.from("2592000"),
           BN.from(ethers.utils.parseUnits("1", 18)),
           BN.from(ethers.utils.parseUnits("50000", 8)),
           false,
-          8
+          8,
         )
-        
-        expect(out.premium.add(out.settlementFee).toString()).to.be.eq("7554443") // 0.07554443 * 50000 => 3778.68749
+
+        expect(out.premium.add(out.settlementFee).toString()).to.be.eq(
+          "7554443",
+        ) // 0.07554443 * 50000 => 3778.68749
       })
     })
-
-    
   })
 })

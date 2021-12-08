@@ -13,7 +13,7 @@ dotEnvConfig()
 
 const {ETHERSCAN_API_KEY, COIN_MARKET_CAP} = process.env
 
-const config: HardhatUserConfig & { docgen: any } = {
+const config: HardhatUserConfig & {docgen: any} = {
   localNetworksConfig: "~/.hardhat/networks.json",
   defaultNetwork: "hardhat",
   solidity: {
@@ -59,7 +59,9 @@ const config: HardhatUserConfig & { docgen: any } = {
   networks: {
     testnet: {
       url: "https://api.avax-test.network/ext/bc/C/rpc",
-      accounts: [process.env.FUJI_PRIVATE_KEY as string]
+      accounts: process.env.FUJI_PRIVATE_KEY
+        ? [process.env.FUJI_PRIVATE_KEY as string]
+        : [],
     },
     coverage: {
       url: "http://127.0.0.1:8555",

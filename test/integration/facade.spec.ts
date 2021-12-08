@@ -1,7 +1,7 @@
 import {ethers, deployments} from "hardhat"
 import {BigNumber as BN, Signer} from "ethers"
 import {solidity} from "ethereum-waffle"
-import chai, { expect } from "chai"
+import chai, {expect} from "chai"
 import {Facade} from "../../typechain/Facade"
 import {UiProvider} from "../../typechain/UiProvider"
 import {HegicPool} from "../../typechain/HegicPool"
@@ -45,7 +45,9 @@ describe("Facade", async () => {
 
     HegicATMCALLWETH = (await ethers.getContract("HegicWETHCALL")) as HegicPool
     HegicATMPUTWETH = (await ethers.getContract("HegicWETHPUT")) as HegicPool
-    HegicATMCALLWAVAX = (await ethers.getContract("HegicWAVAXCALL")) as HegicPool
+    HegicATMCALLWAVAX = (await ethers.getContract(
+      "HegicWAVAXCALL",
+    )) as HegicPool
     HegicATMPUTWAVAX = (await ethers.getContract("HegicWAVAXPUT")) as HegicPool
     WAVAX.deposit({value: ethers.utils.parseUnits("100")})
 
@@ -104,9 +106,8 @@ describe("Facade", async () => {
           ethers.utils.parseUnits("1"),
           2500e8,
           [USDC.address],
-      )
-      expect(pricePut.total.toString()).to.eq("46458200");
-
+        )
+      expect(pricePut.total.toString()).to.eq("46458200")
 
       const priceCallBase = await facade
         .connect(alice)
@@ -115,9 +116,9 @@ describe("Facade", async () => {
           24 * 3600,
           ethers.utils.parseUnits("1"),
           2500e8,
-      )
+        )
 
-      expect(priceCallBase.total.toString()).to.eq("18994328227402749");
+      expect(priceCallBase.total.toString()).to.eq("18994328227402749")
 
       const priceCall = await facade
         .connect(alice)
@@ -127,8 +128,8 @@ describe("Facade", async () => {
           ethers.utils.parseUnits("1"),
           2500e8,
           [USDC.address, WETH.address],
-      )
-      expect(priceCall.total.toString()).to.eq("47629612");
+        )
+      expect(priceCall.total.toString()).to.eq("47628798")
 
       const pricePutBase = await facade
         .connect(alice)
@@ -137,18 +138,17 @@ describe("Facade", async () => {
           24 * 3600,
           ethers.utils.parseUnits("1"),
           2500e8,
-      )
-      expect(pricePutBase.total.toString()).to.eq("46458200");
+        )
+      expect(pricePutBase.total.toString()).to.eq("46458200")
     })
   })
 
   describe("createOption", () => {
     it("should create call options", async () => {
-
       await HegicATMCALLWETH.connect(alice).provideFrom(
         await alice.getAddress(),
         ethers.utils.parseEther("10"),
-        0
+        0,
       )
 
       await facade
@@ -189,7 +189,7 @@ describe("Facade", async () => {
       await HegicATMCALLWETH.connect(alice).provideFrom(
         await alice.getAddress(),
         ethers.utils.parseEther("10"),
-        0
+        0,
       )
 
       await facade
@@ -202,24 +202,25 @@ describe("Facade", async () => {
           [USDC.address, WETH.address],
           ethers.constants.MaxUint256,
         )
-      
-      const overview = await uiProvider.optionsViewData(await alice.getAddress(), 0)
-      expect(overview.totalEntries.toNumber()).to.eq(1);
+
+      const overview = await uiProvider.optionsViewData(
+        await alice.getAddress(),
+        0,
+      )
+      expect(overview.totalEntries.toNumber()).to.eq(1)
     })
 
     it("should have gotten a reward after creating an option", async () => {
-
       const balance0 = await GovernanceToken.balanceOf(await alice.getAddress())
-      expect(balance0.toString()).to.eq("0");
+      expect(balance0.toString()).to.eq("0")
       await HegicATMCALLWETH.connect(alice).provideFrom(
         await alice.getAddress(),
         ethers.utils.parseEther("10"),
-        0
+        0,
       )
       const balance1 = await GovernanceToken.balanceOf(await alice.getAddress())
       // User gets 1250 rewards tokens for providing 10ETH @ 2500 usd
-      expect(balance1.toString()).to.eq("1250000000000000000000");
-
+      expect(balance1.toString()).to.eq("1250000000000000000000")
 
       await facade
         .connect(alice)
@@ -231,10 +232,10 @@ describe("Facade", async () => {
           [USDC.address, WETH.address],
           ethers.constants.MaxUint256,
         )
-      
+
       // User got 2.37 tokens for buying a call @ 47 USD
       const balance2 = await GovernanceToken.balanceOf(await alice.getAddress())
-      expect(balance2.toString()).to.eq("1252374291028425343625");
+      expect(balance2.toString()).to.eq("1252374291028425343625")
     })
   })
 

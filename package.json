@@ -15,7 +15,6 @@
     "prettier:write": "prettier --write \"contracts/**/*.sol\" \"test/**/*.ts\" \"**/*.md\" \"**/*.yml\"",
     "test": "npx hardhat test",
     "gas": "REPORT_GAS=1 npx hardhat test",
-    "coverage": "npx hardhat clean && npx hardhat compile && npx hardhat coverage",
     "deploy": "npx hardhat deploy"
   },
   "author": "0mllwntrmt3",
