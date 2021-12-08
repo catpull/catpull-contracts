@@ -34,7 +34,8 @@ struct OptionViewData {
     uint256 amount; // Amount in asset precision digit
     uint256 expiry;
     uint256 premium; // Premium paid for this option in stablecoin 18 digit
-    int pnl;
+    uint256 value;
+    uint256 tokens;
 }
 
 
@@ -106,10 +107,12 @@ contract UIProvider {
                 ) = pool.options(optId);
 
                 int pnl;
+                
+                uint256 excerciseAmount = pool.profitOf(optId);
+                uint256 valueOfOption = pool.priceOf(excerciseAmount);
                 if (state == IHegicPool.OptionState.Active) {
-                    uint256 activeProfit = pool.profitOf(optId);
-                    if (activeProfit != 0) {
-                        pnl = int(pool.priceOf(activeProfit));
+                    if (valueOfOption != 0) {
+                        pnl = int(valueOfOption) - int(premium);
                     } else {
                         pnl = -int(premium);
                     }
@@ -132,7 +135,8 @@ contract UIProvider {
                     amount,
                     expired,
                     premium,
-                    pnl
+                    valueOfOption,
+                    excerciseAmount
                 );
             }
         }
